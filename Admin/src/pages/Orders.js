@@ -5,11 +5,11 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { getOrders, updateAOrder } from "../features/auth/authSlice";
+import { openOrderBillWindow } from "../utils/orderBill";
 
 const columns = [
   { title: "SNo", dataIndex: "key" },
   { title: "Name", dataIndex: "name" },
-  { title: "Product", dataIndex: "product" },
   { title: "Amount", dataIndex: "amount" },
   { title: "Date", dataIndex: "date" },
   {
@@ -29,6 +29,8 @@ const columns = [
       </span>
     ),
   },
+  { title: "View Bill", dataIndex: "viewBill" },
+  { title: "Print Bill", dataIndex: "printBill" },
   { title: "Action", dataIndex: "action" },
 ];
 
@@ -55,12 +57,24 @@ const Orders = () => {
 
     return orderState.map((order, index) => ({
       key: index + 1,
-      name: order?.user?.firstname,
-      product: <Link to={`/admin/order/${order?._id}`}>View Orders</Link>,
+      name: [order?.user?.firstname, order?.user?.lastname]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || order?.user?.name || "Customer",
       amount: order?.totalPrice,
       date: new Date(order?.createdAt).toLocaleString(),
       rawDate: order?.createdAt,
       mode: order?.mode || "ONLINE",
+      viewBill: <Link to={`/admin/order/${order?._id}`}>View Bill</Link>,
+      printBill: (
+        <Button
+          type="link"
+          style={{ padding: 0 }}
+          onClick={() => openOrderBillWindow(order)}
+        >
+          Print Bill
+        </Button>
+      ),
       action: (
         <select
           defaultValue={order?.orderStatus}

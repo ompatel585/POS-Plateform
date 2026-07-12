@@ -90,7 +90,7 @@ const Cart = () => {
                     <div className="cart-col-1 gap-15 d-flex align-items-center">
                       <div className="w-25">
                         <img
-                          src={item?.productId.images[0].url}
+                          src={item?.productId?.images?.[0]?.url}
                           className="img-fluid"
                           alt="product image"
                         />
@@ -102,7 +102,7 @@ const Cart = () => {
                           Color:
                           <ul className="colors ps-0">
                             <li
-                              style={{ backgroundColor: item?.color.title }}
+                              style={{ backgroundColor: item?.color?.title }}
                             ></li>
                           </ul>
                         </p>

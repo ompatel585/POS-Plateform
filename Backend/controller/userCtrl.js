@@ -583,11 +583,11 @@ const getMyOrders = asyncHandler(async (req, res) => {
 });
 
 const getAllOrders = asyncHandler(async (req, res) => {
-  const { _id } = req.user;
   try {
-    const orders = await Order.find().populate("user");
-    // .populate("orderItems.product")
-    // .populate("orderItems.color");
+    const orders = await Order.find()
+      .populate("user")
+      .populate("orderItems.product")
+      .populate("orderItems.color");
     res.json({
       orders,
     });

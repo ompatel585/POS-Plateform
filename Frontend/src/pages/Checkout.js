@@ -30,10 +30,7 @@ const Checkout = () => {
   const authState = useSelector((state) => state?.auth);
   const [totalAmount, setTotalAmount] = useState(null);
   const [shippingInfo, setShippingInfo] = useState(null);
-  const [paymentInfo, setPaymentInfo] = useState({
-    razorpayPaymentId: "",
-    razorpayOrderId: "",
-  });
+  const [paymentMethod, setPaymentMethod] = useState("razorpay");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -88,7 +85,11 @@ const Checkout = () => {
       setShippingInfo(values);
       localStorage.setItem("address", JSON.stringify(values));
       setTimeout(() => {
-        checkOutHandler();
+        if (paymentMethod === "cod") {
+          codHandler();
+        } else {
+          checkOutHandler();
+        }
       }, 300);
     },
   });
@@ -119,6 +120,21 @@ const Checkout = () => {
     }
     setCartProductState(items);
   }, []);
+
+  const codHandler = () => {
+    dispatch(
+      createAnOrder({
+        totalPrice: totalAmount,
+        totalPriceAfterDiscount: totalAmount,
+        orderItems: cartProductState,
+        paymentInfo: { method: "COD" },
+        shippingInfo: JSON.parse(localStorage.getItem("address")),
+      })
+    );
+    dispatch(deleteUserCart(config2));
+    localStorage.removeItem("address");
+    dispatch(resetState());
+  };
 
   const checkOutHandler = async () => {
     const res = await loadScript(
@@ -357,6 +373,53 @@ const Checkout = () => {
                   </div>
                 </div>
                 <div className="w-100">
+                  <h4 className="mb-3">Payment Method</h4>
+                  <div className="d-flex gap-3 mb-3">
+                    <div
+                      onClick={() => setPaymentMethod("razorpay")}
+                      className="border rounded p-3 d-flex align-items-center gap-2"
+                      style={{
+                        cursor: "pointer",
+                        flex: 1,
+                        borderColor: paymentMethod === "razorpay" ? "#61dafb" : "#dee2e6",
+                        backgroundColor: paymentMethod === "razorpay" ? "#f0fbff" : "#fff",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={paymentMethod === "razorpay"}
+                        onChange={() => setPaymentMethod("razorpay")}
+                      />
+                      <div>
+                        <p className="mb-0 fw-bold">Pay Online</p>
+                        <small className="text-muted">Razorpay (UPI, Card, Net Banking)</small>
+                      </div>
+                    </div>
+                    <div
+                      onClick={() => setPaymentMethod("cod")}
+                      className="border rounded p-3 d-flex align-items-center gap-2"
+                      style={{
+                        cursor: "pointer",
+                        flex: 1,
+                        borderColor: paymentMethod === "cod" ? "#61dafb" : "#dee2e6",
+                        backgroundColor: paymentMethod === "cod" ? "#f0fbff" : "#fff",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={paymentMethod === "cod"}
+                        onChange={() => setPaymentMethod("cod")}
+                      />
+                      <div>
+                        <p className="mb-0 fw-bold">Cash on Delivery</p>
+                        <small className="text-muted">Pay Rs. {totalAmount ? totalAmount + 100 : 0} at delivery</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="w-100">
                   <div className="d-flex justify-content-between align-items-center">
                     <Link to="/cart" className="text-dark">
                       <BiArrowBack className="me-2" />
@@ -366,7 +429,7 @@ const Checkout = () => {
                       Continue to Shipping
                     </Link>
                     <button className="button" type="submit">
-                      Place Order
+                      {paymentMethod === "cod" ? "Place Order (COD)" : "Place Order"}
                     </button>
                   </div>
                 </div>

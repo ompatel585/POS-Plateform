@@ -1,18 +1,23 @@
-* {
+hii* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 :root {
-  --color-131921: #131921;
-  --color-3b4149: #3b4149;
-  --color-febd69: #febd69;
-  --color-232f3e: #232f3e;
-  --color-bf4800: #bf4800;
-  --color-f5f5f7: #f5f5f7;
-  --color-ededed: #ededed;
-  --color-777777: #777777;
-  --color-1c1c1b: #1c1c1b;
+  --color-131921: #0d1b2a;
+  --color-3b4149: #1b263b;
+  --color-febd69: #f0a500;
+  --color-232f3e: #0d1b2a;
+  --color-bf4800: #f0a500;
+  --color-f5f5f7: #1b263b;
+  --color-ededed: #2d3a4f;
+  --color-777777: #8892a0;
+  --color-1c1c1b: #e0e6ed;
+  --color-white: #0d1b2a;
+  --color-light: #e0e6ed;
+  --color-dark-bg: #0a1628;
+  --color-card-bg: #0f2744;
+  --color-border: #1e3a5f;
 }
 .section-heading {
   font-size: 26px;
@@ -21,12 +26,14 @@
   margin-bottom: 30px;
 }
 .card-wrapper {
-  background-color: white;
-  box-shadow: 0 0 10px #0000001a;
+  background-color: var(--color-card-bg);
+  box-shadow: 0 0 10px #00000033;
   padding: 15px;
 }
 body {
   font-family: "Rubik", sans-serif;
+  background-color: var(--color-dark-bg);
+  color: var(--color-light);
 }
 
 
@@ -193,7 +200,7 @@ footer .input-group-text {
 
 /* home wrapper 2 */
 .home-wrapper-2 {
-  background-color: var(--color-f5f5f7);
+  background-color: var(--color-dark-bg);
 }
 
 /* home wrapper 2 ends */
@@ -201,8 +208,8 @@ footer .input-group-text {
 /* categories section */
 
 .categories {
-  background-color: white;
-  box-shadow: 0 0 10px #0000001a;
+  background-color: var(--color-card-bg);
+  box-shadow: 0 0 10px #00000033;
   padding: 15px;
 }
 .categories > div {

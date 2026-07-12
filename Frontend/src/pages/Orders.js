@@ -3,9 +3,11 @@ import Container from "../components/Container";
 import BreadCrumb from "../components/BreadCrumb";
 import { useDispatch, useSelector } from "react-redux";
 import { getOrders } from "../features/user/userSlice";
+import { useNavigate } from "react-router-dom";
 
 const Orders = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   const orderState = useSelector(
     (state) => state?.auth?.getorderedProduct?.orders
@@ -61,12 +63,12 @@ const Orders = () => {
                 >
                   {/* Order Header */}
                   <div
-                    className="card-header d-flex justify-content-between align-items-center"
+                    className="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
                     style={{ background: "#f8f9fa" }}
                   >
                     <div>
                       <small className="text-muted">Order ID</small>
-                      <div className="fw-semibold">{order._id}</div>
+                      <div className="fw-semibold" style={{ fontSize: "12px" }}>{order._id}</div>
                     </div>
 
                     <div>
@@ -94,6 +96,21 @@ const Orders = () => {
                     >
                       {order.orderStatus}
                     </span>
+
+                    <div className="d-flex gap-2">
+                      <button
+                        className="btn btn-sm btn-outline-dark"
+                        onClick={() => navigate(`/order-bill/${order._id}`)}
+                      >
+                        View Bill
+                      </button>
+                      <button
+                        className="btn btn-sm btn-dark"
+                        onClick={() => navigate(`/order-bill/${order._id}?print=true`)}
+                      >
+                        🖨️ Print Bill
+                      </button>
+                    </div>
                   </div>
 
                   {/* Order Items */}
