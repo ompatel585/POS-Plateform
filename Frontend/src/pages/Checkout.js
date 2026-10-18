@@ -1,501 +1,380 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BiArrowBack } from "react-icons/bi";
-import Container from "../components/Container";
 import { useDispatch, useSelector } from "react-redux";
 import { useFormik } from "formik";
 import * as yup from "yup";
 import axios from "axios";
-import { config, base_url } from "../utils/axiosConfig";
-import {
-  createAnOrder,
-  deleteUserCart,
-  getUserCart,
-  resetState,
-} from "../features/user/userSlice";
+import { toast } from "react-toastify";
+import { BsBag, BsCheckLg, BsTag, BsX, BsLock } from "react-icons/bs";
+import Container from "../components/Container";
+import Meta from "../components/Meta";
+import EmptyState from "../components/EmptyState";
+import { base_url } from "../utils/axiosConfig";
+import { createAnOrder, getUserCart } from "../features/user/userSlice";
+import { cartSubtotal, formatPrice, shippingFor, unitPrice } from "../utils/pricing";
+import { readJSON, writeJSON } from "../utils/storage";
 
-let shippingSchema = yup.object({
-  firstname: yup.string().required("First Name is Required"),
-  lastname: yup.string().required("Last Name is Required"),
-  address: yup.string().required("Address Details are Required"),
-  state: yup.string().required("S tate is Required"),
-  city: yup.string().required("city is Required"),
-  country: yup.string().required("country is Required"),
-  pincode: yup.number("Pincode No is Required").required().positive().integer(),
+const STATES = [
+  "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+  "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa",
+  "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka",
+  "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+  "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+];
+
+const ADDRESS_KEY = "savedAddress";
+
+const shippingSchema = yup.object({
+  firstname: yup.string().trim().required("First name is required"),
+  lastname: yup.string().trim().required("Last name is required"),
+  address: yup.string().trim().required("Address is required"),
+  city: yup.string().trim().required("City is required"),
+  state: yup.string().required("State is required"),
+  country: yup.string().required("Country is required"),
+  pincode: yup
+    .string()
+    .matches(/^[1-9][0-9]{5}$/, "Enter a valid 6-digit pincode")
+    .required("Pincode is required"),
+  other: yup.string(),
 });
+
+const loadScript = (src) =>
+  new Promise((resolve) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve(true);
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+const Field = ({ formik, name, placeholder, className = "col-12", ...rest }) => (
+  <div className={className}>
+    <input
+      className={`form-control ${formik.touched[name] && formik.errors[name] ? "is-invalid" : ""}`}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      {...formik.getFieldProps(name)}
+      {...rest}
+    />
+    {formik.touched[name] && formik.errors[name] && <div className="error mt-1">{formik.errors[name]}</div>}
+  </div>
+);
+
+const Steps = ({ current }) => {
+  const steps = ["Cart", "Shipping", "Payment", "Done"];
+  return (
+    <div className="stepper" aria-label="Checkout progress">
+      {steps.map((label, i) => (
+        <React.Fragment key={label}>
+          {i > 0 && <span className="step-line" />}
+          <span className={`step ${i < current ? "done" : i === current ? "active" : ""}`}>
+            <span className="num">{i < current ? <BsCheckLg /> : i + 1}</span>
+            {label}
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
 
 const Checkout = () => {
   const dispatch = useDispatch();
-  const cartState = useSelector((state) => state?.auth?.cartProducts);
-  const authState = useSelector((state) => state?.auth);
-  const [totalAmount, setTotalAmount] = useState(null);
-  const [shippingInfo, setShippingInfo] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState("razorpay");
   const navigate = useNavigate();
+  const cart = useSelector((state) => state?.auth?.cartProducts);
+  const user = useSelector((state) => state?.auth?.user);
+
+  const [paymentMethod, setPaymentMethod] = useState("razorpay");
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState(null); // { name, discount } as confirmed by the server
+  const [applying, setApplying] = useState(false);
+  const [placing, setPlacing] = useState(false);
 
   useEffect(() => {
-    let sum = 0;
-    for (let index = 0; index < cartState?.length; index++) {
-      sum = sum + Number(cartState[index].quantity) * cartState[index].price;
-      setTotalAmount(sum);
-    }
-  }, [cartState]);
+    dispatch(getUserCart());
+  }, [dispatch]);
 
-  const getTokenFromLocalStorage = localStorage.getItem("customer")
-    ? JSON.parse(localStorage.getItem("customer"))
-    : null;
+  const items = useMemo(() => (cart || []).filter((i) => i?.productId), [cart]);
+  const subtotal = cartSubtotal(items);
+  const discount = coupon ? Math.round((subtotal * coupon.discount) / 100) : 0;
+  const shipping = shippingFor(subtotal - discount);
+  const total = subtotal - discount + shipping;
 
-  const config2 = {
-    headers: {
-      Authorization: `Bearer ${
-        getTokenFromLocalStorage !== null ? getTokenFromLocalStorage.token : ""
-      }`,
-      Accept: "application/json",
-    },
-  };
-
-  useEffect(() => {
-    dispatch(getUserCart(config2));
-  }, []);
-
-  useEffect(() => {
-    if (
-      authState?.orderedProduct?.order !== null &&
-      authState?.orderedProduct?.success === true
-    ) {
-      navigate("/my-orders");
-    }
-  }, [authState]);
-
-  const [cartProductState, setCartProductState] = useState([]);
-
+  const saved = readJSON(ADDRESS_KEY, null);
   const formik = useFormik({
     initialValues: {
-      firstname: "",
-      lastname: "",
-      address: "",
-      state: "",
-      city: "",
-      country: "",
-      pincode: "",
-      other: "",
+      firstname: saved?.firstname || user?.firstname || "",
+      lastname: saved?.lastname || user?.lastname || "",
+      address: saved?.address || "",
+      other: saved?.other || "",
+      city: saved?.city || "",
+      state: saved?.state || "",
+      country: "India",
+      pincode: saved?.pincode || "",
     },
     validationSchema: shippingSchema,
-    onSubmit: (values) => {
-      setShippingInfo(values);
-      localStorage.setItem("address", JSON.stringify(values));
-      setTimeout(() => {
-        if (paymentMethod === "cod") {
-          codHandler();
-        } else {
-          checkOutHandler();
-        }
-      }, 300);
-    },
+    onSubmit: (values) => placeOrder(values),
   });
 
-  const loadScript = (src) => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = src;
-      script.onload = () => {
-        resolve(true);
-      };
-      script.onerror = () => {
-        resolve(false);
-      };
-      document.body.appendChild(script);
-    });
+  const applyCoupon = async (e) => {
+    e?.preventDefault();
+    const code = couponInput.trim();
+    if (!code) return;
+    setApplying(true);
+    try {
+      const { data } = await axios.post(`${base_url}coupon/apply`, { coupon: code });
+      setCoupon(data.coupon);
+      toast.success(`${data.coupon.name} applied – you saved ${formatPrice(data.discount)}`);
+    } catch (err) {
+      setCoupon(null);
+      toast.error(err?.response?.data?.message || "Could not apply this coupon");
+    } finally {
+      setApplying(false);
+    }
   };
 
-  useEffect(() => {
-    let items = [];
-    for (let index = 0; index < cartState?.length; index++) {
-      items.push({
-        product: cartState[index].productId._id,
-        quantity: cartState[index].quantity,
-        color: cartState[index].color._id,
-        price: cartState[index].price,
-      });
-    }
-    setCartProductState(items);
-  }, []);
-
-  const codHandler = () => {
-    dispatch(
+  const finishOrder = async (shippingInfo, paymentInfo) => {
+    const result = await dispatch(
       createAnOrder({
-        totalPrice: totalAmount,
-        totalPriceAfterDiscount: totalAmount,
-        orderItems: cartProductState,
-        paymentInfo: { method: "COD" },
-        shippingInfo: JSON.parse(localStorage.getItem("address")),
+        shippingInfo: { ...shippingInfo, pincode: Number(shippingInfo.pincode) },
+        paymentInfo,
+        coupon: coupon?.name,
       })
     );
-    dispatch(deleteUserCart(config2));
-    localStorage.removeItem("address");
-    dispatch(resetState());
+    setPlacing(false);
+    if (result.error) return;
+    dispatch(getUserCart());
+    navigate(`/my-orders?placed=${result.payload?.order?._id || ""}`);
   };
 
-  const checkOutHandler = async () => {
-    const res = await loadScript(
-      "https://checkout.razorpay.com/v1/checkout.js"
-    );
-
-    if (!res) {
-      alert("Razorpay SDK faild to Load");
-      return;
-    }
-    const result = await axios.post(
-      `${base_url}order/checkout`,
-      { amount: totalAmount + 100 },
-      config
-    );
-
-    if (!result) {
-      alert("Something Went Wrong");
-      return;
+  const payOnline = async (shippingInfo) => {
+    const loaded = await loadScript("https://checkout.razorpay.com/v1/checkout.js");
+    if (!loaded) {
+      setPlacing(false);
+      return toast.error("Could not load the payment window. Check your connection.");
     }
 
-    const { amount, id: order_id, currency } = result.data.order;
+    let checkout;
+    try {
+      // The server works out the amount from the cart and coupon
+      ({ data: checkout } = await axios.post(`${base_url}user/order/checkout`, { coupon: coupon?.name }));
+    } catch (err) {
+      setPlacing(false);
+      return toast.error(err?.response?.data?.message || "Could not start the payment");
+    }
 
-    const options = {
-      key: "rzp_test_HSSeDI22muUrLR", // Enter the Key ID generated from the Dashboard
-      amount: amount,
-      currency: currency,
-      name: "Cart's corner",
-      description: "Test Transaction",
-
-      order_id: order_id,
-      handler: async function (response) {
-        const data = {
-          orderCreationId: order_id,
-          razorpayPaymentId: response.razorpay_payment_id,
+    const { amount, id: order_id, currency } = checkout.order;
+    const razorpay = new window.Razorpay({
+      key: checkout.key,
+      amount,
+      currency,
+      name: "Cart Corner",
+      description: `Order of ${items.length} item${items.length > 1 ? "s" : ""}`,
+      order_id,
+      handler: (response) =>
+        finishOrder(shippingInfo, {
           razorpayOrderId: response.razorpay_order_id,
-        };
-
-        const result = await axios.post(
-          `${base_url}order/paymentVerification`,
-          data,
-          config
-        );
-
-        dispatch(
-          createAnOrder({
-            totalPrice: totalAmount,
-            totalPriceAfterDiscount: totalAmount,
-            orderItems: cartProductState,
-            paymentInfo: result.data,
-            shippingInfo: JSON.parse(localStorage.getItem("address")),
-          })
-        );
-        dispatch(deleteUserCart(config2));
-        localStorage.removeItem("address");
-        dispatch(resetState());
-      },
+          razorpayPaymentId: response.razorpay_payment_id,
+          razorpaySignature: response.razorpay_signature,
+        }),
       prefill: {
-        name: "Dev Corner",
-        email: "devcorner@example.com",
-        contact: "9999999999",
+        name: `${shippingInfo.firstname} ${shippingInfo.lastname}`,
+        email: user?.email,
+        contact: user?.mobile,
       },
-      notes: {
-        address: "developer's cornor office",
-      },
-      theme: {
-        color: "#61dafb",
-      },
-    };
-
-    const paymentObject = new window.Razorpay(options);
-    paymentObject.open();
+      theme: { color: "#f0a500" },
+      modal: { ondismiss: () => setPlacing(false) },
+    });
+    razorpay.on("payment.failed", (resp) => {
+      setPlacing(false);
+      toast.error(resp?.error?.description || "Payment failed");
+    });
+    razorpay.open();
   };
+
+  const placeOrder = (values) => {
+    writeJSON(ADDRESS_KEY, values);
+    setPlacing(true);
+    if (paymentMethod === "cod") {
+      finishOrder(values, { method: "COD" });
+    } else {
+      payOnline(values);
+    }
+  };
+
+  if (cart !== undefined && items.length === 0) {
+    return (
+      <Container class1="home-wrapper-2 py-5">
+        <EmptyState
+          icon={<BsBag />}
+          title="Nothing to check out"
+          message="Your cart is empty. Add a few things first."
+          actionLabel="Browse products"
+          actionTo="/product"
+        />
+      </Container>
+    );
+  }
+
   return (
     <>
-      <Container class1="checkout-wrapper py-5 home-wrapper-2">
-        <div className="row">
-          <div className="col-7">
-            <div className="checkout-left-data">
-              <h3 className="website-name">Cart Corner</h3>
-              <nav
-                style={{ "--bs-breadcrumb-divider": ">" }}
-                aria-label="breadcrumb"
-              >
-                <ol className="breadcrumb">
-                  <li className="breadcrumb-item">
-                    <Link className="text-dark total-price" to="/cart">
-                      Cart
-                    </Link>
-                  </li>
-                  &nbsp; /&nbsp;
-                  <li
-                    className="breadcrumb-ite total-price active"
-                    aria-current="page"
-                  >
-                    Information
-                  </li>
-                  &nbsp; /
-                  <li className="breadcrumb-item total-price active">
-                    Shipping
-                  </li>
-                  &nbsp; /
-                  <li
-                    className="breadcrumb-item total-price active"
-                    aria-current="page"
-                  >
-                    Payment
-                  </li>
-                </ol>
-              </nav>
-              <h4 className="title total">Contact Information</h4>
-              <p className="user-details total">
-                Dev Jariwala (devjariwala8444@gmail.com)
-              </p>
-              <h4 className="mb-3">Shipping Address</h4>
-              <form
-                onSubmit={formik.handleSubmit}
-                action=""
-                className="d-flex gap-15 flex-wrap justify-content-between"
-              >
-                <div className="w-100">
-                  <select
-                    className="form-control form-select"
-                    id=""
-                    name="country"
-                    value={formik.values.country}
-                    onChange={formik.handleChange("country")}
-                    onBlur={formik.handleChange("country")}
-                  >
-                    <option value="" selected disabled>
-                      Select Country
-                    </option>
-                    <option value="India">India</option>
-                  </select>
-                  <div className="error ms-2 my-1">
-                    {formik.touched.country && formik.errors.country}
-                  </div>
-                </div>
-                <div className="flex-grow-1">
-                  <input
-                    type="text"
-                    placeholder="First Name"
-                    className="form-control"
-                    name="firstname"
-                    value={formik.values.firstname}
-                    onChange={formik.handleChange("firstname")}
-                    onBlur={formik.handleBlur("firstname")}
-                  />
-                  <div className="error ms-2 my-1">
-                    {formik.touched.firstname && formik.errors.firstname}
-                  </div>
-                </div>
-                <div className="flex-grow-1">
-                  <input
-                    type="text"
-                    placeholder="Last Name"
-                    className="form-control"
-                    name="lastname"
-                    value={formik.values.lastname}
-                    onChange={formik.handleChange("lastname")}
-                    onBlur={formik.handleBlur("lastname")}
-                  />
-                  <div className="error ms-2 my-1">
-                    {formik.touched.lastname && formik.errors.lastname}
-                  </div>
-                </div>
-                <div className="w-100">
-                  <input
-                    type="text"
-                    placeholder="Address"
-                    className="form-control"
-                    name="address"
-                    value={formik.values.address}
-                    onChange={formik.handleChange("address")}
-                    onBlur={formik.handleBlur("address")}
-                  />
-                  <div className="error ms-2 my-1">
-                    {formik.touched.address && formik.errors.address}
-                  </div>
-                </div>
-                <div className="w-100">
-                  <input
-                    type="text"
-                    placeholder="Apartment, Suite ,etc"
-                    className="form-control"
-                    name="other"
-                    value={formik.values.other}
-                    onChange={formik.handleChange("other")}
-                    onBlur={formik.handleBlur("other")}
-                  />
-                </div>
-                <div className="flex-grow-1">
-                  <input
-                    type="text"
-                    placeholder="City"
-                    className="form-control"
-                    name="city"
-                    value={formik.values.city}
-                    onChange={formik.handleChange("city")}
-                    onBlur={formik.handleBlur("city")}
-                  />
-                  <div className="error ms-2 my-1">
-                    {formik.touched.city && formik.errors.city}
-                  </div>
-                </div>
-                <div className="flex-grow-1">
-                  <select
-                    className="form-control form-select"
-                    id=""
-                    name="state"
-                    value={formik.values.state}
-                    onChange={formik.handleChange("state")}
-                    onBlur={formik.handleChange("state")}
-                  >
-                    <option value="" selected disabled>
-                      Select State
-                    </option>
-                    <option value="Gujarat">Gujarat</option>
-                  </select>
-                  <div className="error ms-2 my-1">
-                    {formik.touched.state && formik.errors.state}
-                  </div>
-                </div>
-                <div className="flex-grow-1">
-                  <input
-                    type="text"
-                    placeholder="Pincode"
-                    className="form-control"
-                    name="pincode"
-                    value={formik.values.pincode}
-                    onChange={formik.handleChange("pincode")}
-                    onBlur={formik.handleBlur("pincode")}
-                  />
-                  <div className="error ms-2 my-1">
-                    {formik.touched.pincode && formik.errors.pincode}
-                  </div>
-                </div>
-                <div className="w-100">
-                  <h4 className="mb-3">Payment Method</h4>
-                  <div className="d-flex gap-3 mb-3">
-                    <div
-                      onClick={() => setPaymentMethod("razorpay")}
-                      className="border rounded p-3 d-flex align-items-center gap-2"
-                      style={{
-                        cursor: "pointer",
-                        flex: 1,
-                        borderColor: paymentMethod === "razorpay" ? "#61dafb" : "#dee2e6",
-                        backgroundColor: paymentMethod === "razorpay" ? "#f0fbff" : "#fff",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        checked={paymentMethod === "razorpay"}
-                        onChange={() => setPaymentMethod("razorpay")}
-                      />
-                      <div>
-                        <p className="mb-0 fw-bold">Pay Online</p>
-                        <small className="text-muted">Razorpay (UPI, Card, Net Banking)</small>
-                      </div>
-                    </div>
-                    <div
-                      onClick={() => setPaymentMethod("cod")}
-                      className="border rounded p-3 d-flex align-items-center gap-2"
-                      style={{
-                        cursor: "pointer",
-                        flex: 1,
-                        borderColor: paymentMethod === "cod" ? "#61dafb" : "#dee2e6",
-                        backgroundColor: paymentMethod === "cod" ? "#f0fbff" : "#fff",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        checked={paymentMethod === "cod"}
-                        onChange={() => setPaymentMethod("cod")}
-                      />
-                      <div>
-                        <p className="mb-0 fw-bold">Cash on Delivery</p>
-                        <small className="text-muted">Pay Rs. {totalAmount ? totalAmount + 100 : 0} at delivery</small>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="w-100">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <Link to="/cart" className="text-dark">
-                      <BiArrowBack className="me-2" />
-                      Return to Cart
-                    </Link>
-                    <Link to="/cart" className="button">
-                      Continue to Shipping
-                    </Link>
-                    <button className="button" type="submit">
-                      {paymentMethod === "cod" ? "Place Order (COD)" : "Place Order"}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-          <div className="col-5">
-            <div className="border-bottom py-4">
-              {cartState &&
-                cartState?.map((item, index) => {
-                  return (
-                    <div
-                      key={index}
-                      className="d-flex gap-10 mb-2 align-align-items-center"
-                    >
-                      <div className="w-75 d-flex gap-10">
-                        <div className="w-25 position-relative">
-                          <span
-                            style={{ top: "-10px", right: "2px" }}
-                            className="badge bg-secondary text-white rounded-circle p-2 position-absolute"
-                          >
-                            {item?.quantity}
-                          </span>
-                          <img
-                            src={item?.productId?.images[0]?.url}
-                            width={100}
-                            height={100}
-                            alt="product"
-                          />
-                        </div>
-                        <div>
-                          <h5 className="total-price">
-                            {item?.productId?.title}
-                          </h5>
-                          <p className="total-price">{item?.color?.title}</p>
-                        </div>
-                      </div>
-                      <div className="flex-grow-1">
-                        <h5 className="total">
-                          Rs. {item?.price * item?.quantity}
-                        </h5>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-            <div className="border-bottom py-4">
-              <div className="d-flex justify-content-between align-items-center">
-                <p className="total">Subtotal</p>
-                <p className="total-price">
-                  Rs. {totalAmount ? totalAmount : "0"}
+      <Meta title="Checkout | Cart Corner" />
+      <Container class1="checkout-wrapper home-wrapper-2 py-4">
+        <h1 className="page-title mb-3">Checkout</h1>
+        <Steps current={1} />
+
+        <form onSubmit={formik.handleSubmit} noValidate>
+          <div className="cart-layout">
+            <div className="d-flex flex-column gap-3">
+              <section className="surface-card">
+                <h5 className="mb-1">Contact</h5>
+                <p className="text-muted mb-0 small">
+                  {user?.firstname} {user?.lastname} · {user?.email}
+                  {user?.mobile && <> · {user.mobile}</>}
                 </p>
-              </div>
-              <div className="d-flex justify-content-between align-items-center">
-                <p className="mb-0 total">Shipping</p>
-                <p className="mb-0 total-price">Rs. 100</p>
+              </section>
+
+              <section className="surface-card">
+                <h5 className="mb-3">Shipping address</h5>
+                <div className="row g-3">
+                  <Field formik={formik} name="firstname" placeholder="First name" className="col-sm-6" autoComplete="given-name" />
+                  <Field formik={formik} name="lastname" placeholder="Last name" className="col-sm-6" autoComplete="family-name" />
+                  <Field formik={formik} name="address" placeholder="Street address" autoComplete="address-line1" />
+                  <Field formik={formik} name="other" placeholder="Apartment, suite, landmark (optional)" autoComplete="address-line2" />
+                  <Field formik={formik} name="city" placeholder="City" className="col-sm-6" autoComplete="address-level2" />
+                  <Field formik={formik} name="pincode" placeholder="Pincode" className="col-sm-6" inputMode="numeric" maxLength={6} autoComplete="postal-code" />
+                  <div className="col-sm-6">
+                    <select
+                      className={`form-select ${formik.touched.state && formik.errors.state ? "is-invalid" : ""}`}
+                      aria-label="State"
+                      {...formik.getFieldProps("state")}
+                    >
+                      <option value="" disabled>Select state</option>
+                      {STATES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    {formik.touched.state && formik.errors.state && <div className="error mt-1">{formik.errors.state}</div>}
+                  </div>
+                  <div className="col-sm-6">
+                    <select className="form-select" aria-label="Country" {...formik.getFieldProps("country")}>
+                      <option value="India">India</option>
+                    </select>
+                  </div>
+                </div>
+                {saved && <p className="small text-muted mt-3 mb-0">We filled in the address from your last order.</p>}
+              </section>
+
+              <section className="surface-card">
+                <h5 className="mb-3">Payment method</h5>
+                <div className="d-flex gap-3 flex-wrap">
+                  <label className={`pay-option ${paymentMethod === "razorpay" ? "selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === "razorpay"}
+                      onChange={() => setPaymentMethod("razorpay")}
+                    />
+                    <span>
+                      <span className="label d-block">Pay online</span>
+                      <small>UPI, cards, net banking via Razorpay</small>
+                    </span>
+                  </label>
+                  <label className={`pay-option ${paymentMethod === "cod" ? "selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === "cod"}
+                      onChange={() => setPaymentMethod("cod")}
+                    />
+                    <span>
+                      <span className="label d-block">Cash on delivery</span>
+                      <small>Pay {formatPrice(total)} when it arrives</small>
+                    </span>
+                  </label>
+                </div>
+              </section>
+
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <Link to="/cart" className="button button-ghost">← Back to cart</Link>
               </div>
             </div>
-            <div className="d-flex justify-content-between align-items-center border-bootom py-4">
-              <h4 className="total">Total</h4>
-              <h5 className="total-price">
-                Rs. {totalAmount ? totalAmount + 100 : "0"}
-              </h5>
-            </div>
+
+            <aside className="summary-card">
+              <h5>Order summary</h5>
+              <div className="mb-3">
+                {items.map((item) => (
+                  <div className="mini-item" key={item._id}>
+                    <div className="thumb">
+                      <img src={item.productId.images?.[0]?.url} alt="" />
+                      <span className="qty">{item.quantity}</span>
+                    </div>
+                    <div className="text-truncate">
+                      <div className="text-truncate">{item.productId.title}</div>
+                      <small className="text-muted">
+                        {[item.size && `Size ${item.size}`, item.color?.title].filter(Boolean).join(" · ")}
+                      </small>
+                    </div>
+                    <strong>{formatPrice(unitPrice(item) * item.quantity)}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {coupon ? (
+                <div className="coupon-applied mb-3">
+                  <span className="d-flex align-items-center gap-2">
+                    <BsTag /> <strong>{coupon.name}</strong> · {coupon.discount}% off
+                  </span>
+                  <button type="button" className="icon-btn" style={{ width: 28, height: 28 }} aria-label="Remove coupon" onClick={() => setCoupon(null)}>
+                    <BsX />
+                  </button>
+                </div>
+              ) : (
+                <div className="coupon-box mb-3">
+                  <input
+                    className="form-control"
+                    placeholder="Coupon code"
+                    aria-label="Coupon code"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && applyCoupon(e)}
+                  />
+                  <button type="button" className="button button-outline" disabled={applying || !couponInput.trim()} onClick={applyCoupon}>
+                    {applying ? "…" : "Apply"}
+                  </button>
+                </div>
+              )}
+
+              <div className="summary-row">
+                <span>Subtotal</span>
+                <strong>{formatPrice(subtotal)}</strong>
+              </div>
+              {discount > 0 && (
+                <div className="summary-row discount">
+                  <span>Discount</span>
+                  <strong>−{formatPrice(discount)}</strong>
+                </div>
+              )}
+              <div className="summary-row">
+                <span>Shipping</span>
+                <strong>{shipping ? formatPrice(shipping) : "Free"}</strong>
+              </div>
+              <div className="summary-total">
+                <span>Total</span>
+                <span>{formatPrice(total)}</span>
+              </div>
+
+              <button type="submit" className="button button-accent button-block mt-3" disabled={placing || cart === undefined}>
+                <BsLock />{" "}
+                {placing ? "Processing…" : paymentMethod === "cod" ? "Place order" : `Pay ${formatPrice(total)}`}
+              </button>
+              <p className="small text-muted text-center mt-2 mb-0">
+                By placing your order you agree to our <Link to="/term-conditions">terms</Link>.
+              </p>
+            </aside>
           </div>
-        </div>
+        </form>
       </Container>
     </>
   );

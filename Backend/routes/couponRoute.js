@@ -5,10 +5,12 @@ const {
   updateCoupon,
   deleteCoupon,
   getCoupon,
+  applyCoupon,
 } = require("../controller/couponCtrl");
 const { authMiddleware, isAdmin } = require("../middlewares/authMiddleware");
 const router = express.Router();
 
+router.post("/apply", authMiddleware, applyCoupon);
 router.post("/", authMiddleware, isAdmin, createCoupon);
 router.get("/", authMiddleware, isAdmin, getAllCoupons);
 router.get("/:id", authMiddleware, isAdmin, getCoupon);

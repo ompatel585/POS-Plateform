@@ -37,6 +37,7 @@ const {
   getsingleOrder,
   updateOrder,
   createOfflineOrder,
+  cancelMyOrder,
 } = require("../controller/userCtrl");
 
 
@@ -68,14 +69,16 @@ router.post("/order/checkout", authMiddleware, checkout);
 router.post("/order/paymentVerification", authMiddleware, paymentVerification);
 
 router.post("/cart/create-order", authMiddleware, createOrder);
-router.get("/all-users", getallUser);
+router.get("/all-users", authMiddleware, isAdmin, getallUser);
+router.post("/create-customer", authMiddleware, isAdmin, createUser);
+router.put("/order/:id/cancel", authMiddleware, cancelMyOrder);
 router.get("/getmyorders", authMiddleware, getMyOrders);
 router.get("/getallorders", authMiddleware, isAdmin, getAllOrders);
 router.get("/getaOrder/:id", authMiddleware, isAdmin, getsingleOrder);
 router.put("/updateOrder/:id", authMiddleware, isAdmin, updateOrder);
 
-router.get("/getMonthWiseOrderIncome", authMiddleware, getMonthWiseOrderIncome);
-router.get("/getyearlyorders", authMiddleware, getYearlyTotalOrder);
+router.get("/getMonthWiseOrderIncome", authMiddleware, isAdmin, getMonthWiseOrderIncome);
+router.get("/getyearlyorders", authMiddleware, isAdmin, getYearlyTotalOrder);
 
 router.get("/refresh", handleRefreshToken);
 router.get("/logout", logout);
@@ -97,7 +100,7 @@ router.delete(
 
 router.delete("/empty-cart", authMiddleware, emptyCart);
 
-router.delete("/:id", deleteaUser);
+router.delete("/:id", authMiddleware, isAdmin, deleteaUser);
 
 router.put("/edit-user", authMiddleware, updatedUser);
 router.put("/save-address", authMiddleware, saveAddress);

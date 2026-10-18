@@ -60,6 +60,7 @@ var orderSchema = new mongoose.Schema(
 },
 
 paymentInfo: {
+  method: { type: String, default: "RAZORPAY" },
   razorpayOrderId: { type: String },
   razorpayPaymentId: { type: String },
 },
@@ -104,6 +105,10 @@ paymentInfo: {
       required: false, // ✅ optional
       default: null,
     },
+    size: {
+      type: String,
+      default: null,
+    },
     quantity: {
       type: Number,
       required: true,
@@ -115,14 +120,24 @@ paymentInfo: {
   },
 ],
 
+    coupon: {
+      name: { type: String },
+      discount: { type: Number },
+    },
+    // no default: older orders without it are recognised as legacy
+    shippingCharge: {
+      type: Number,
+    },
+
     
+    // functions, so the value is taken per order rather than once at server start
     paidAt: {
       type: Date,
-      default: Date.now(),
+      default: Date.now,
     },
     month: {
       type: Number,
-      default: new Date().getMonth(),
+      default: () => new Date().getMonth(),
     },
     totalPrice: {
       type: Number,
@@ -136,6 +151,12 @@ paymentInfo: {
       type: String,
       default: "Ordered",
     },
+    statusHistory: [
+      {
+        status: String,
+        at: { type: Date, default: Date.now },
+      },
+    ],
     mode: {
   type: String,
   enum: ["ONLINE", "OFFLINE"],

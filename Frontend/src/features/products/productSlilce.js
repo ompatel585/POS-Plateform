@@ -115,9 +115,10 @@ export const productSlice = createSlice({
         state.isError = false;
         state.isSuccess = true;
         state.rating = action.payload;
+        state.singleproduct = action.payload;
         state.message = "Rating Added Successfully";
         if (state.isSuccess) {
-          toast.success("Rating Added Successfully");
+          toast.success("Thanks for your review!");
         }
       })
       .addCase(addRating.rejected, (state, action) => {
@@ -125,6 +126,7 @@ export const productSlice = createSlice({
         state.isLoading = false;
         state.isSuccess = false;
         state.message = action.error;
+        toast.error(action?.payload?.response?.data?.message || "Could not save your review");
       });
   },
 });

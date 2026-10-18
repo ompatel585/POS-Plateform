@@ -70,8 +70,13 @@ const OrderBill = () => {
   const formatDate = (date) =>
     new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
-  const shipping = 100;
-  const subtotal = order.totalPriceAfterDiscount;
+  // Orders placed before coupons/free shipping stored the subtotal in
+  // totalPriceAfterDiscount and always paid a flat 100 for shipping
+  const isLegacy = order.shippingCharge === undefined && order.mode !== "OFFLINE";
+  const subtotal = isLegacy ? order.totalPriceAfterDiscount : order.totalPrice;
+  const shipping = isLegacy ? 100 : order.shippingCharge || 0;
+  const discount = isLegacy ? 0 : Math.max(0, subtotal + shipping - order.totalPriceAfterDiscount);
+  const grandTotal = isLegacy ? subtotal + shipping : order.totalPriceAfterDiscount;
 
   return (
     <div className="container py-5">
@@ -84,7 +89,7 @@ const OrderBill = () => {
         </button>
       </div>
 
-      <div ref={printRef} style={{ maxWidth: "800px", margin: "0 auto", padding: "30px", border: "1px solid #eee", borderRadius: "12px" }}>
+      <div ref={printRef} style={{ maxWidth: "800px", margin: "0 auto", padding: "30px", border: "1px solid #eee", borderRadius: "12px", background: "#fff", color: "#111" }}>
         {/* Bill Header */}
         <div className="d-flex justify-content-between align-items-start mb-4">
           <div>
@@ -148,7 +153,10 @@ const OrderBill = () => {
                         style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "6px" }}
                       />
                     )}
-                    <span>{item?.product?.title || "N/A"}</span>
+                    <span>
+                      {item?.product?.title || "N/A"}
+                      {item?.size && <small style={{ display: "block", color: "#666" }}>Size: {item.size}</small>}
+                    </span>
                   </div>
                 </td>
                 <td style={{ border: "1px solid #ddd", padding: "10px" }}>
@@ -170,13 +178,21 @@ const OrderBill = () => {
               <td colSpan={5} style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>Subtotal</td>
               <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>₹ {subtotal?.toLocaleString("en-IN")}</td>
             </tr>
+            {discount > 0 && (
+              <tr>
+                <td colSpan={5} style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>
+                  Discount{order.coupon?.name ? ` (${order.coupon.name})` : ""}
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>− ₹ {discount.toLocaleString("en-IN")}</td>
+              </tr>
+            )}
             <tr>
               <td colSpan={5} style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>Shipping</td>
-              <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>₹ {shipping}</td>
+              <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>{shipping ? `₹ ${shipping}` : "Free"}</td>
             </tr>
             <tr style={{ fontWeight: "bold", background: "#f9f9f9" }}>
               <td colSpan={5} style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>Grand Total</td>
-              <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>₹ {(subtotal + shipping)?.toLocaleString("en-IN")}</td>
+              <td style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right" }}>₹ {grandTotal?.toLocaleString("en-IN")}</td>
             </tr>
           </tfoot>
         </table>

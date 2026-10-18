@@ -26,6 +26,9 @@ import { OpenRoutes } from "./routing/OpenRoutes";
 import Orders from "./pages/Orders";
 import Profile from "./pages/Profile";
 import OrderBill from "./pages/OrderBill";
+import Category from "./pages/Category";
+import Search from "./pages/Search";
+import NotFound from "./pages/NotFound";
 
 function App() {
   return (
@@ -38,6 +41,8 @@ function App() {
             <Route path="contact" element={<Contact />} />
             <Route path="product" element={<OurStore />} />
             <Route path="product/:id" element={<SingleProduct />} />
+            <Route path="category/:name" element={<Category />} />
+            <Route path="search" element={<Search />} />
             <Route path="blogs" element={<Blog />} />
             <Route path="blog/:id" element={<SingleBlog />} />
             <Route
@@ -111,6 +116,7 @@ function App() {
             <Route path="refund-policy" element={<RefundPloicy />} />
             <Route path="shipping-policy" element={<ShippingPolicy />} />
             <Route path="term-conditions" element={<TermAndContions />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
       </BrowserRouter>

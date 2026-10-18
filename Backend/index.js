@@ -18,7 +18,6 @@ const uploadRouter = require("./routes/uploadRoute");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const cors = require("cors");
-const productRoute = require("./routes/productRoute");
 
 const customerRoute = require("./routes/customerRoute");
 
@@ -42,16 +41,11 @@ app.use("/api/coupon", couponRouter);
 app.use("/api/color", colorRouter);
 app.use("/api/enquiry", enqRouter);
 app.use("/api/upload", uploadRouter);
-app.use("/api/product", productRoute);
 app.use("/public", express.static("public"));
 app.use("/api/customers", customerRoute);
 
    
 
-app.use("/api/product", productRouter);
-
-
-// app.use("/api/user", require("./routes/userRoute"));
 
 
 

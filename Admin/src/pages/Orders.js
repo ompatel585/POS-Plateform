@@ -1,231 +1,239 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Table, Button, Popover, DatePicker, Radio } from "antd";
-import { FilterOutlined } from "@ant-design/icons";
+import { Table, Button, DatePicker, Input, Select, Tag, Space } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import { getOrders, updateAOrder } from "../features/auth/authSlice";
 import { openOrderBillWindow } from "../utils/orderBill";
+import { downloadCsv } from "../utils/csv";
 
-const columns = [
-  { title: "SNo", dataIndex: "key" },
-  { title: "Name", dataIndex: "name" },
-  { title: "Amount", dataIndex: "amount" },
-  { title: "Date", dataIndex: "date" },
-  {
-    title: "Mode",
-    dataIndex: "mode",
-    render: (mode) => (
-      <span
-        style={{
-          padding: "2px 6px",
-          borderRadius: 4,
-          fontSize: 11,
-          color: "#fff",
-          background: mode === "OFFLINE" ? "#fa541c" : "#52c41a",
-        }}
-      >
-        {mode}
-      </span>
-    ),
-  },
-  { title: "View Bill", dataIndex: "viewBill" },
-  { title: "Print Bill", dataIndex: "printBill" },
-  { title: "Action", dataIndex: "action" },
-];
+const STATUSES = ["Ordered", "Processed", "Shipped", "Out for Delivery", "Delivered", "Cancelled"];
+const STATUS_COLORS = {
+  Ordered: "gold",
+  Processed: "blue",
+  Shipped: "geekblue",
+  "Out for Delivery": "purple",
+  Delivered: "green",
+  Cancelled: "red",
+};
+
+const customerName = (order) =>
+  [order?.user?.firstname, order?.user?.lastname].filter(Boolean).join(" ").trim() ||
+  order?.user?.name ||
+  "Customer";
+
+const paymentLabel = (order) =>
+  order?.mode === "OFFLINE"
+    ? "In store"
+    : order?.paymentInfo?.method === "COD"
+    ? "Cash on delivery"
+    : "Online";
 
 const Orders = () => {
   const dispatch = useDispatch();
   const orderState = useSelector((state) => state?.auth?.orders?.orders);
 
-  const [activeFilter, setActiveFilter] = useState(null); // "date" | "mode"
-  const [filters, setFilters] = useState({
-    dateRange: null,
-    mode: null,
-  });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState(null);
+  const [mode, setMode] = useState(null);
+  const [dateRange, setDateRange] = useState(null);
 
   useEffect(() => {
     dispatch(getOrders());
   }, [dispatch]);
 
-  const updateOrderStatus = (id, status) => {
-    dispatch(updateAOrder({ id, status }));
+  const updateOrderStatus = async (id, next) => {
+    // Cancelling puts the items back in stock and can't be reversed from here
+    if (next === "Cancelled" && !window.confirm("Cancel this order? Stock will be restored.")) return;
+    await dispatch(updateAOrder({ id, status: next }));
+    dispatch(getOrders());
   };
 
-  const dataSource = useMemo(() => {
-    if (!orderState) return [];
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...(orderState || [])]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .filter((order) => {
+        if (status && order.orderStatus !== status) return false;
+        if (mode && (order.mode || "ONLINE") !== mode) return false;
+        if (dateRange) {
+          const d = dayjs(order.createdAt);
+          if (d.isBefore(dateRange[0].startOf("day")) || d.isAfter(dateRange[1].endOf("day"))) return false;
+        }
+        if (q) {
+          const haystack = [order._id, customerName(order), order.user?.email, order.user?.mobile]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(q)) return false;
+        }
+        return true;
+      });
+  }, [orderState, search, status, mode, dateRange]);
 
-    return orderState.map((order, index) => ({
-      key: index + 1,
-      name: [order?.user?.firstname, order?.user?.lastname]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || order?.user?.name || "Customer",
-      amount: order?.totalPrice,
-      date: new Date(order?.createdAt).toLocaleString(),
-      rawDate: order?.createdAt,
-      mode: order?.mode || "ONLINE",
-      viewBill: <Link to={`/admin/order/${order?._id}`}>View Bill</Link>,
-      printBill: (
-        <Button
-          type="link"
-          style={{ padding: 0 }}
-          onClick={() => openOrderBillWindow(order)}
-        >
-          Print Bill
-        </Button>
+  const columns = [
+    {
+      title: "Order",
+      dataIndex: "_id",
+      render: (id) => <Link to={`/admin/order/${id}`}>#{id.slice(-8).toUpperCase()}</Link>,
+    },
+    { title: "Customer", render: (_, order) => customerName(order) },
+    {
+      title: "Amount",
+      dataIndex: "totalPriceAfterDiscount",
+      sorter: (a, b) => a.totalPriceAfterDiscount - b.totalPriceAfterDiscount,
+      render: (amount, order) => (
+        <span>
+          ₹{Number(amount || 0).toLocaleString("en-IN")}
+          {order.coupon?.name && <Tag className="ms-2">{order.coupon.name}</Tag>}
+        </span>
       ),
-      action: (
+    },
+    {
+      title: "Date",
+      dataIndex: "createdAt",
+      sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+      render: (d) => new Date(d).toLocaleString("en-IN"),
+    },
+    {
+      title: "Payment",
+      render: (_, order) => (
+        <Tag color={order.mode === "OFFLINE" ? "volcano" : order.paymentInfo?.method === "COD" ? "orange" : "green"}>
+          {paymentLabel(order)}
+        </Tag>
+      ),
+    },
+    {
+      title: "Status",
+      dataIndex: "orderStatus",
+      render: (s) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
+    },
+    {
+      title: "Bill",
+      render: (_, order) => (
+        <Space size={4}>
+          <Link to={`/admin/order/${order._id}`}>View</Link>
+          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openOrderBillWindow(order)}>
+            Print
+          </Button>
+        </Space>
+      ),
+    },
+    {
+      title: "Update status",
+      render: (_, order) => (
         <select
-          defaultValue={order?.orderStatus}
-          onChange={(e) =>
-            updateOrderStatus(order?._id, e.target.value)
-          }
-          className="form-control form-select"
+          value={order.orderStatus}
+          disabled={order.orderStatus === "Cancelled"}
+          onChange={(e) => updateOrderStatus(order._id, e.target.value)}
+          className="form-control form-select form-select-sm"
+          style={{ minWidth: 150 }}
         >
-          <option value="Ordered" disabled>Ordered</option>
-          <option value="Processed">Processed</option>
-          <option value="Shipped">Shipped</option>
-          <option value="Out for Delivery">Out for Delivery</option>
-          <option value="Delivered">Delivered</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s} disabled={s === "Ordered"}>
+              {s}
+            </option>
+          ))}
         </select>
       ),
-    }));
-  }, [orderState]);
+    },
+  ];
 
-  const filteredData = useMemo(() => {
-    return dataSource.filter((item) => {
-      let ok = true;
+  const exportCsv = () =>
+    downloadCsv(
+      `orders-${dayjs().format("YYYY-MM-DD")}.csv`,
+      filtered.map((o) => ({
+        id: o._id,
+        date: dayjs(o.createdAt).format("YYYY-MM-DD HH:mm"),
+        customer: customerName(o),
+        email: o.user?.email || "",
+        mobile: o.user?.mobile || "",
+        items: o.orderItems?.reduce((n, i) => n + i.quantity, 0) || 0,
+        subtotal: o.totalPrice,
+        coupon: o.coupon?.name || "",
+        total: o.totalPriceAfterDiscount,
+        payment: paymentLabel(o),
+        status: o.orderStatus,
+        city: o.shippingInfo?.city || "",
+        state: o.shippingInfo?.state || "",
+      })),
+      [
+        { key: "id", label: "Order ID" },
+        { key: "date", label: "Date" },
+        { key: "customer", label: "Customer" },
+        { key: "email", label: "Email" },
+        { key: "mobile", label: "Mobile" },
+        { key: "items", label: "Items" },
+        { key: "subtotal", label: "Subtotal" },
+        { key: "coupon", label: "Coupon" },
+        { key: "total", label: "Total" },
+        { key: "payment", label: "Payment" },
+        { key: "status", label: "Status" },
+        { key: "city", label: "City" },
+        { key: "state", label: "State" },
+      ]
+    );
 
-      if (filters.mode) {
-        ok = ok && item.mode === filters.mode;
-      }
-
-      if (filters.dateRange) {
-        const [start, end] = filters.dateRange;
-        const d = dayjs(item.rawDate);
-        ok =
-          ok &&
-          d.isAfter(start.startOf("day")) &&
-          d.isBefore(end.endOf("day"));
-      }
-
-      return ok;
-    });
-  }, [filters, dataSource]);
-
-  const filterContent = (
-    <div style={{ width: 240 }}>
-      <Radio.Group
-        size="small"
-        value={activeFilter}
-        onChange={(e) => setActiveFilter(e.target.value)}
-        style={{ marginBottom: 12 }}
-      >
-        <Radio.Button value="date">Date</Radio.Button>
-        <Radio.Button value="mode">Mode</Radio.Button>
-      </Radio.Group>
-
-      {activeFilter === "date" && (
-        <>
-          <div style={{ fontSize: 12, marginBottom: 6 }}>
-            Date Range
-          </div>
-          {/* <DatePicker.RangePicker
-            size="small"
-            style={{ width: "100%" }}
-            popupStyle={{ fontSize: 12 }}
-            onChange={(dates) =>
-              setFilters((prev) => ({
-                ...prev,
-                dateRange: dates,
-              }))
-            }
-          /> */}
-          <DatePicker.RangePicker
-  size="small"
-  className="w-full"
-  popupClassName="single-calendar-range" // 👈 THIS IS THE KEY
-  onChange={(dates) =>
-    setFilters((prev) => ({
-      ...prev,
-      dateRange: dates,
-    }))
-  }
-/>
-
-        </>
-      )}
-
-      {activeFilter === "mode" && (
-        <>
-          <div style={{ fontSize: 12, marginBottom: 6 }}>
-            Order Mode
-          </div>
-          <Radio.Group
-            size="small"
-            value={filters.mode}
-            onChange={(e) =>
-              setFilters((prev) => ({
-                ...prev,
-                mode: e.target.value,
-              }))
-            }
-          >
-            <Radio value="ONLINE">Online</Radio>
-            <Radio value="OFFLINE">Offline (POS)</Radio>
-          </Radio.Group>
-        </>
-      )}
-
-      <div
-        style={{
-          marginTop: 14,
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: 8,
-        }}
-      >
-        <Button
-          size="small"
-          onClick={() => {
-            setFilters({ dateRange: null, mode: null });
-            setActiveFilter(null);
-          }}
-        >
-          Clear
-        </Button>
-        <Button size="small" type="primary">
-          Apply
-        </Button>
-      </div>
-    </div>
-  );
+  const hasFilters = search || status || mode || dateRange;
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h3 className="title">Orders</h3>
-
-        <Popover
-          content={filterContent}
-          trigger="click"
-          placement="bottomRight"
-        >
-          <Button size="small" icon={<FilterOutlined />}>
-            Filters
-          </Button>
-        </Popover>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h3 className="title mb-0">Orders</h3>
+        <Button icon={<DownloadOutlined />} onClick={exportCsv} disabled={!filtered.length}>
+          Export CSV ({filtered.length})
+        </Button>
       </div>
 
-      <Table columns={columns} dataSource={filteredData} />
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <Input.Search
+          allowClear
+          placeholder="Search order ID, name, email or phone"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: 300 }}
+        />
+        <Select
+          allowClear
+          placeholder="Any status"
+          value={status}
+          onChange={setStatus}
+          style={{ width: 170 }}
+          options={STATUSES.map((s) => ({ value: s, label: s }))}
+        />
+        <Select
+          allowClear
+          placeholder="Online & in store"
+          value={mode}
+          onChange={setMode}
+          style={{ width: 170 }}
+          options={[
+            { value: "ONLINE", label: "Online" },
+            { value: "OFFLINE", label: "In store (POS)" },
+          ]}
+        />
+        <DatePicker.RangePicker
+          value={dateRange}
+          onChange={setDateRange}
+          popupClassName="single-calendar-range"
+          allowClear
+        />
+        {hasFilters && (
+          <Button
+            type="link"
+            onClick={() => {
+              setSearch("");
+              setStatus(null);
+              setMode(null);
+              setDateRange(null);
+            }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      <Table rowKey="_id" columns={columns} dataSource={filtered} loading={!orderState} scroll={{ x: 900 }} />
     </div>
   );
 };

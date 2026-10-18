@@ -6,6 +6,7 @@ import {
   AiOutlineUser,
   AiOutlineBgColors,
   AiOutlineLogout,
+  AiOutlineWarning,
 } from "react-icons/ai";
 
 import { RiCouponLine } from "react-icons/ri";
@@ -42,7 +43,7 @@ const MainLayout = () => {
           defaultSelectedKeys={[""]}
           onClick={({ key }) => {
             if (key === "signout") {
-              localStorage.clear();
+              localStorage.removeItem("user");
               window.location.reload();
             } else {
               navigate(key);
@@ -116,6 +117,11 @@ const MainLayout = () => {
               key: "orders",
               icon: <FaClipboardList className="fs-4" />,
               label: "Orders",
+            },
+            {
+              key: "low-stock",
+              icon: <AiOutlineWarning className="fs-4" />,
+              label: "Low Stock",
             },
             {
               key: "marketing",

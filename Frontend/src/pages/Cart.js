@@ -1,172 +1,163 @@
 import React, { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { BsBag, BsDash, BsPlus, BsTrash } from "react-icons/bs";
 import BreadCrumb from "../components/BreadCrumb";
 import Meta from "../components/Meta";
-import watch from "../images/watch.jpg";
-import { AiFillDelete } from "react-icons/ai";
-import { Link } from "react-router-dom";
 import Container from "../components/Container";
-import { useDispatch, useSelector } from "react-redux";
-import {
-  deleteCartProduct,
-  getUserCart,
-  updateCartProduct,
-} from "../features/user/userSlice";
+import EmptyState from "../components/EmptyState";
+import RecentlyViewed from "../components/RecentlyViewed";
+import { deleteCartProduct, getUserCart, updateCartProduct } from "../features/user/userSlice";
+import { cartSubtotal, formatPrice, shippingFor, stockFor, unitPrice, FREE_SHIPPING_ABOVE } from "../utils/pricing";
+
+const MAX_PER_ORDER = 10;
 
 const Cart = () => {
-  const getTokenFromLocalStorage = localStorage.getItem("customer")
-    ? JSON.parse(localStorage.getItem("customer"))
-    : null;
-
-  const config2 = {
-    headers: {
-      Authorization: `Bearer ${
-        getTokenFromLocalStorage !== null ? getTokenFromLocalStorage.token : ""
-      }`,
-      Accept: "application/json",
-    },
-  };
-
   const dispatch = useDispatch();
-
-  const [productupdateDetail, setProductupdateDetail] = useState(null);
-  const [totalAmount, setTotalAmount] = useState(null);
-  const userCartState = useSelector((state) => state.auth.cartProducts);
-
-  useEffect(() => {
-    dispatch(getUserCart(config2));
-  }, []);
+  const navigate = useNavigate();
+  const cart = useSelector((state) => state?.auth?.cartProducts);
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
-    if (productupdateDetail !== null) {
-      dispatch(
-        updateCartProduct({
-          cartItemId: productupdateDetail?.cartItemId,
-          quantity: productupdateDetail?.quantity,
-        })
-      );
-      setTimeout(() => {
-        dispatch(getUserCart(config2));
-      }, 200);
-    }
-  }, [productupdateDetail]);
+    dispatch(getUserCart());
+  }, [dispatch]);
 
-  const deleteACartProduct = (id) => {
-    dispatch(deleteCartProduct({ id: id, config2: config2 }));
-    setTimeout(() => {
-      dispatch(getUserCart(config2));
-    }, 200);
+  const items = (cart || []).filter((item) => item?.productId);
+  const subtotal = cartSubtotal(items);
+  const shipping = shippingFor(subtotal);
+  const toFreeShipping = Math.max(0, FREE_SHIPPING_ABOVE - subtotal);
+
+  const changeQuantity = async (item, quantity) => {
+    setBusyId(item._id);
+    await dispatch(updateCartProduct({ cartItemId: item._id, quantity }));
+    await dispatch(getUserCart());
+    setBusyId(null);
   };
 
-  useEffect(() => {
-    let sum = 0;
-    for (let index = 0; index < userCartState?.length; index++) {
-      sum =
-        sum +
-        Number(userCartState[index].quantity) * userCartState[index].price;
-      setTotalAmount(sum);
-    }
-  }, [userCartState]);
+  const remove = async (item) => {
+    setBusyId(item._id);
+    await dispatch(deleteCartProduct({ id: item._id }));
+    await dispatch(getUserCart());
+    setBusyId(null);
+  };
 
   return (
     <>
-      <Meta title={"Cart"} />
+      <Meta title="Cart | Cart Corner" />
       <BreadCrumb title="Cart" />
-      <Container class1="cart-wrapper home-wrapper-2 py-5">
-        <div className="row">
-          <div className="col-12">
-            <div className="cart-header py-3 d-flex justify-content-between align-items-center">
-              <h4 className="cart-col-1">Product</h4>
-              <h4 className="cart-col-2">Price</h4>
-              <h4 className="cart-col-3">Quantity</h4>
-              <h4 className="cart-col-4">Total</h4>
-            </div>
-            {userCartState &&
-              userCartState?.map((item, index) => {
-                return (
-                  <div
-                    key={index}
-                    className="cart-data py-3 mb-2 d-flex justify-content-between align-items-center"
-                  >
-                    <div className="cart-col-1 gap-15 d-flex align-items-center">
-                      <div className="w-25">
-                        <img
-                          src={item?.productId?.images?.[0]?.url}
-                          className="img-fluid"
-                          alt="product image"
-                        />
-                      </div>
-                      <div className="w-75">
-                        <p>{item?.productId.title}</p>
+      <Container class1="cart-wrapper home-wrapper-2 py-4">
+        <h1 className="page-title mb-3">Shopping cart</h1>
 
-                        <p className="d-flex gap-3">
-                          Color:
-                          <ul className="colors ps-0">
-                            <li
-                              style={{ backgroundColor: item?.color?.title }}
-                            ></li>
-                          </ul>
-                        </p>
+        {cart === undefined ? (
+          <div className="skeleton" style={{ height: 240 }} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={<BsBag />}
+            title="Your cart is empty"
+            message="Looks like you haven't added anything yet. Let's fix that."
+            actionLabel="Start shopping"
+            actionTo="/product"
+          />
+        ) : (
+          <div className="cart-layout">
+            <div>
+              {items.map((item) => {
+                const product = item.productId;
+                const max = Math.max(1, Math.min(MAX_PER_ORDER, stockFor(product, item.size)));
+                const busy = busyId === item._id;
+                return (
+                  <div className="cart-item" key={item._id} style={{ opacity: busy ? 0.6 : 1 }}>
+                    <Link to={`/product/${product._id}`}>
+                      <img src={product.images?.[0]?.url} alt={product.title} />
+                    </Link>
+                    <div>
+                      <Link to={`/product/${product._id}`} className="title">
+                        {product.title}
+                      </Link>
+                      <div className="variant">
+                        <span>{formatPrice(unitPrice(item))}</span>
+                        {item.size && <span>Size: {item.size}</span>}
+                        {item.color?.title && (
+                          <span className="d-inline-flex align-items-center gap-1">
+                            <span className="color-dot" style={{ backgroundColor: item.color.title }} />
+                            {item.color.title}
+                          </span>
+                        )}
+                      </div>
+                      <div className="d-flex align-items-center gap-3 mt-3 flex-wrap">
+                        <div className="qty-stepper sm">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            disabled={busy || item.quantity <= 1}
+                            onClick={() => changeQuantity(item, item.quantity - 1)}
+                          >
+                            <BsDash />
+                          </button>
+                          <span>{item.quantity}</span>
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            disabled={busy || item.quantity >= max}
+                            onClick={() => changeQuantity(item, item.quantity + 1)}
+                          >
+                            <BsPlus />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="button button-ghost button-sm text-danger"
+                          disabled={busy}
+                          onClick={() => remove(item)}
+                        >
+                          <BsTrash /> Remove
+                        </button>
                       </div>
                     </div>
-                    <div className="cart-col-2">
-                      <h5 className="price">Rs. {item?.price}</h5>
-                    </div>
-                    <div className="cart-col-3 d-flex align-items-center gap-15">
-                      <div>
-                        <input
-                          className="form-control"
-                          type="number"
-                          name={"quantity" + item?._id}
-                          min={1}
-                          max={10}
-                          id={"card" + item?._id}
-                          value={item?.quantity}
-                          onChange={(e) => {
-                            setProductupdateDetail({
-                              cartItemId: item?._id,
-                              quantity: e.target.value,
-                            });
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <AiFillDelete
-                          onClick={() => {
-                            deleteACartProduct(item?._id);
-                          }}
-                          className="text-danger "
-                        />
-                      </div>
-                    </div>
-                    <div className="cart-col-4">
-                      <h5 className="price">
-                        Rs. {item?.quantity * item?.price}
-                      </h5>
-                    </div>
+                    <div className="line-total">{formatPrice(unitPrice(item) * item.quantity)}</div>
                   </div>
                 );
               })}
-          </div>
-          <div className="col-12 py-2 mt-4">
-            <div className="d-flex justify-content-between align-items-baseline">
-              <Link to="/product" className="button">
-                Continue To Shopping
+              <Link to="/product" className="button button-outline mt-2">
+                ← Continue shopping
               </Link>
-              {(totalAmount !== null || totalAmount !== 0) && (
-                <div className="d-flex flex-column align-items-end">
-                  <h4>
-                    SubTotal: Rs.{" "}
-                    {!userCartState?.length ? 0 : totalAmount ? totalAmount : 0}
-                  </h4>
-                  <p>Taxes and shipping calculated at checkout</p>
-                  <Link to="/checkout" className="button">
-                    Checkout
-                  </Link>
-                </div>
-              )}
             </div>
+
+            <aside className="summary-card">
+              <h5>Order summary</h5>
+              <div className="ship-progress">
+                {toFreeShipping > 0 ? (
+                  <>Add <strong>{formatPrice(toFreeShipping)}</strong> more for free shipping</>
+                ) : (
+                  <>🎉 You've unlocked free shipping</>
+                )}
+                <div className="bar">
+                  <span style={{ width: `${Math.min(100, (subtotal / FREE_SHIPPING_ABOVE) * 100)}%` }} />
+                </div>
+              </div>
+              <div className="summary-row">
+                <span>Subtotal ({items.reduce((n, i) => n + Number(i.quantity), 0)} items)</span>
+                <strong>{formatPrice(subtotal)}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Shipping</span>
+                <strong>{shipping ? formatPrice(shipping) : "Free"}</strong>
+              </div>
+              <div className="summary-total">
+                <span>Total</span>
+                <span>{formatPrice(subtotal + shipping)}</span>
+              </div>
+              <p className="small text-muted mt-2 mb-3">Have a coupon? Apply it at checkout.</p>
+              <button type="button" className="button button-accent button-block" onClick={() => navigate("/checkout")}>
+                Proceed to checkout
+              </button>
+            </aside>
           </div>
-        </div>
+        )}
+      </Container>
+
+      <Container class1="home-wrapper-2 py-4">
+        <RecentlyViewed title="Pick up where you left off" />
       </Container>
     </>
   );

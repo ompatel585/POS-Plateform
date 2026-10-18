@@ -8,7 +8,11 @@ const {
 
 
 
+const { authMiddleware, isAdmin } = require("../middlewares/authMiddleware");
+
 const router = express.Router();
+// Everything here is for the admin panel
+router.use(authMiddleware, isAdmin);
 router.get("/", searchUsers);
 
 

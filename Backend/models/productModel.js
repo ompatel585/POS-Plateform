@@ -117,6 +117,8 @@ sizeStock: [
         star: Number,
         comment: String,
         postedby: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verified: { type: Boolean, default: false },
+        postedAt: { type: Date, default: Date.now },
       },
     ],
     totalrating: {

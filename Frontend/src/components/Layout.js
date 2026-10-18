@@ -2,27 +2,31 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import Footer from "./Footer";
 import Header from "./Header";
+import ScrollToTop from "./ScrollToTop";
 
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const Layout = () => {
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
   return (
     <>
       <Header />
-      <Outlet />
+      <main>
+        <Outlet />
+      </main>
       <Footer />
+      <ScrollToTop />
       <ToastContainer
         position="top-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
+        autoClose={3000}
+        hideProgressBar
+        newestOnTop
         closeOnClick
-        rtl={false}
         pauseOnFocusLoss
         draggable
         pauseOnHover
-        theme="light"
+        theme={theme}
       />
     </>
   );

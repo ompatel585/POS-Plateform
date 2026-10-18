@@ -1,6 +1,11 @@
 import { createSlice, createAsyncThunk, createAction } from "@reduxjs/toolkit";
 import { authService } from "./userService";
 import { toast } from "react-toastify";
+import { addToWishlist } from "../products/productSlilce";
+
+// Prefer the message the API sent back over a generic one
+const apiError = (action, fallback = "Something Went Wrong!") =>
+  action?.payload?.response?.data?.message || fallback;
 
 export const registerUser = createAsyncThunk(
   "auth/register",
@@ -145,6 +150,17 @@ export const resetPassword = createAsyncThunk(
   }
 );
 
+export const cancelOrder = createAsyncThunk(
+  "user/orders/cancel",
+  async (id, thunkAPI) => {
+    try {
+      return await authService.cancelOrder(id);
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error);
+    }
+  }
+);
+
 export const resetState = createAction("Reset_all");
 
 const getCustomerfromLocalStorage = localStorage.getItem("customer")
@@ -153,6 +169,7 @@ const getCustomerfromLocalStorage = localStorage.getItem("customer")
 
 const initialState = {
   user: getCustomerfromLocalStorage,
+  wishlistIds: [],
   isError: false,
   isSuccess: false,
   isLoading: false,
@@ -183,7 +200,7 @@ export const authSlice = createSlice({
         state.isSuccess = false;
         state.message = action.error;
         if (state.isError === true) {
-          toast.error(action.payload.response.data.message);
+          toast.error(apiError(action));
         }
       })
       .addCase(loginUser.pending, (state) => {
@@ -206,7 +223,7 @@ export const authSlice = createSlice({
         state.isSuccess = false;
         state.message = action.error;
         if (state.isError === true) {
-          toast.error(action.payload.response.data.message);
+          toast.error(apiError(action));
         }
       })
       .addCase(getuserProductWishlist.pending, (state) => {
@@ -217,6 +234,10 @@ export const authSlice = createSlice({
         state.isError = false;
         state.isSuccess = true;
         state.wishlist = action.payload;
+        state.wishlistIds = (action.payload?.wishlist || []).map((p) => p?._id || p);
+      })
+      .addCase(addToWishlist.fulfilled, (state, action) => {
+        state.wishlistIds = (action.payload?.wishlist || []).map((p) => p?._id || p);
       })
       .addCase(getuserProductWishlist.rejected, (state, action) => {
         state.isLoading = false;
@@ -241,6 +262,7 @@ export const authSlice = createSlice({
         state.isError = true;
         state.isSuccess = false;
         state.message = action.error;
+        toast.error(apiError(action, "Could not add to cart"));
       })
       .addCase(getUserCart.pending, (state) => {
         state.isLoading = true;
@@ -266,7 +288,7 @@ export const authSlice = createSlice({
         state.isSuccess = true;
         state.deletedCartProduct = action.payload;
         if (state.isSuccess) {
-          toast.success("Product Deleted From Cart Successfully!");
+          toast.success("Removed from cart");
         }
       })
       .addCase(deleteCartProduct.rejected, (state, action) => {
@@ -286,18 +308,14 @@ export const authSlice = createSlice({
         state.isError = false;
         state.isSuccess = true;
         state.updatedCartProduct = action.payload;
-        if (state.isSuccess) {
-          toast.success("Product Updated Successfully!");
-        }
+
       })
       .addCase(updateCartProduct.rejected, (state, action) => {
         state.isLoading = false;
         state.isError = true;
         state.isSuccess = false;
         state.message = action.error;
-        if (state.isError) {
-          toast.error("Something Went Wrong!");
-        }
+        toast.error(apiError(action));
       })
       .addCase(createAnOrder.pending, (state) => {
         state.isLoading = true;
@@ -308,7 +326,7 @@ export const authSlice = createSlice({
         state.isSuccess = true;
         state.orderedProduct = action.payload;
         if (state.isSuccess) {
-          toast.success("Ordered createad Successfully!");
+          toast.success("Order placed successfully!");
         }
       })
       .addCase(createAnOrder.rejected, (state, action) => {
@@ -316,9 +334,21 @@ export const authSlice = createSlice({
         state.isError = true;
         state.isSuccess = false;
         state.message = action.error;
-        if (state.isError) {
-          toast.error("Something Went Wrong!");
+        toast.error(apiError(action, "Could not place the order"));
+      })
+      .addCase(cancelOrder.fulfilled, (state, action) => {
+        const updated = action.payload?.order;
+        const orders = state.getorderedProduct?.orders;
+        if (updated && orders) {
+          const i = orders.findIndex((o) => o._id === updated._id);
+          if (i !== -1) {
+            orders[i] = { ...orders[i], orderStatus: updated.orderStatus, statusHistory: updated.statusHistory };
+          }
         }
+        toast.success("Order cancelled");
+      })
+      .addCase(cancelOrder.rejected, (state, action) => {
+        toast.error(apiError(action, "Could not cancel the order"));
       })
       .addCase(getOrders.pending, (state) => {
         state.isLoading = true;
@@ -426,7 +456,12 @@ export const authSlice = createSlice({
         state.isSuccess = false;
         state.message = action.error;
       })
-      .addCase(resetState, () => initialState);
+      .addCase(resetState, (state) => ({
+        ...initialState,
+        user: state.user,
+        wishlistIds: state.wishlistIds,
+        wishlist: state.wishlist,
+      }));
   },
 });
 

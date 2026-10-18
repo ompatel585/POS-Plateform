@@ -18,8 +18,7 @@ import { base_url, config } from "../../utils/axiosConfig";
 //   }
 // };
 const getProducts = async (data = {}) => {
- 
-  console.log(  "Service",data)
+
   const response = await axios.get(`${base_url}product`, {
     params: {
       store: true,                 // 🔑 REQUIRED
@@ -29,6 +28,9 @@ const getProducts = async (data = {}) => {
       ...(data.minPrice && { "price[gte]": data.minPrice }),
       ...(data.maxPrice && { "price[lte]": data.maxPrice }),
       ...(data.sort && { sort: data.sort }),
+      ...(data.q && { q: data.q }),
+      ...(data.size && { size: data.size }),
+      ...(data.limit && { limit: data.limit }),
     },
   });
 
