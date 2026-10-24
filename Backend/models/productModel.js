@@ -30,6 +30,17 @@ var productSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    inventory: {
+      offline: {
+        type: Boolean,
+        default: true, // always true
+        immutable: true, // cannot be changed after creation
+      },
+      online: {
+        type: Boolean,
+        default: false, // admin can enable
+      },
+    },
 
     // ✅ NEW FIELD
     barcode: {
@@ -56,26 +67,58 @@ var productSchema = new mongoose.Schema(
     // ],
 
     images: [
+      {
+        public_id: String,
+        url: String,
+      },
+    ],
+
+    videos: [
+      {
+        public_id: String,
+        url: String,
+      },
+    ],
+
+    // color: [{ type: mongoose.Schema.Types.ObjectId, ref: "Color" }],
+    color: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Color",
+},
+
+//     size: {
+//   type: [String],
+//   enum: ["XS", "S", "M", "L", "XL", "2XL", "3XL"],
+//   default: [],
+// },
+
+
+sizeStock: [
   {
-    public_id: String,
-    url: String,
-  }
+    size: {
+      type: String,
+      enum: ["XS","S","M","L","XL","2XL","3XL"],
+    },
+    quantity: {
+      type: Number,
+      default: 0,
+    },
+    barcode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+  },
 ],
 
-videos: [
-  {
-    public_id: String,
-    url: String,
-  }
-],
-
-    color: [{ type: mongoose.Schema.Types.ObjectId, ref: "Color" }],
     tags: String,
     ratings: [
       {
         star: Number,
         comment: String,
         postedby: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verified: { type: Boolean, default: false },
+        postedAt: { type: Date, default: Date.now },
       },
     ],
     totalrating: {
@@ -83,9 +126,9 @@ videos: [
       default: 0,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 
 //Export the model
-module.exports = mongoose.model("Product", productSchema);
+module.exports = mongoose.model("Product", productSchema);  

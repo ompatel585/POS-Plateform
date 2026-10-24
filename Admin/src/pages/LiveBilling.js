@@ -13,6 +13,14 @@ const LiveBilling = () => {
 const [sgstPercent, setSgstPercent] = useState(0);
 const [discountPercent, setDiscountPercent] = useState(0);
 
+const [contactSearch, setContactSearch] = useState("");
+const [showContactDropdown, setShowContactDropdown] = useState(false);
+
+
+const clampNonNegative = (v) => {
+  if (v === "" || isNaN(v)) return 0;
+  return Math.max(0, Number(v));
+};
 
 
 
@@ -23,6 +31,11 @@ const [discountPercent, setDiscountPercent] = useState(0);
 
   const [taxPercent, setTaxPercent] = useState(0);
   const [discount, setDiscount] = useState(0);
+
+  const [customers, setCustomers] = useState([]);
+const [searchTerm, setSearchTerm] = useState("");
+const [showDropdown, setShowDropdown] = useState(false);
+
 
   /* =========================
      AUTO FOCUS SCANNER INPUT
@@ -209,6 +222,86 @@ const [discountPercent, setDiscountPercent] = useState(0);
   return () => window.removeEventListener("keydown", handleKeyDown);
 }, []);
 
+
+// useEffect(() => {
+//   const fetchCustomers = async () => {
+//     try {
+//       const res = await axios.get(`${base_url}user/all-users`, config);
+//       setCustomers(res.data.filter(u => u.role !== "admin"));
+//     } catch (err) {
+//       console.error("Failed to fetch customers");
+//     }
+//   };
+
+//   fetchCustomers();
+// }, []);
+
+
+useEffect(() => {
+  if (!searchTerm.trim()) {
+    setCustomers([]);
+    return;
+  }
+
+  const delay = setTimeout(async () => {
+    try {
+      const res = await axios.get(
+        `${base_url}user/search?query=${searchTerm}`,
+        config
+      );
+      setCustomers(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, 400); // debounce 400ms
+
+  return () => clearTimeout(delay);
+}, [searchTerm]);
+
+
+
+// const filteredCustomers = useMemo(() => {
+//   if (!searchTerm) return [];
+//   return customers.filter((c) =>
+//     `${c.firstname} ${c.lastname}`
+//       .toLowerCase()
+//       .includes(searchTerm.toLowerCase())
+//   );
+// }, [searchTerm, customers]);
+
+// const filteredByContact = useMemo(() => {
+//   if (!contactSearch.trim()) return [];
+
+//   return customers.filter((c) =>
+//     String(c.mobile || "").includes(contactSearch.trim())
+//   );
+// }, [contactSearch, customers]);
+
+
+useEffect(() => {
+  if (!contactSearch.trim()) {
+    setCustomers([]);
+    return;
+  }
+
+  const delay = setTimeout(async () => {
+    try {
+      const res = await axios.get(
+        `${base_url}user/search?query=${contactSearch}`,
+        config
+      );
+      setCustomers(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, 400);
+
+  return () => clearTimeout(delay);
+}, [contactSearch]);
+
+
+
+
   /* =========================
      FINALIZE SALE
      ========================= */
@@ -339,7 +432,7 @@ const payableAmount = useMemo(
         Customer Details
       </h2>
 
-      <div>
+      {/* <div>
         <label className="text-xs font-medium">Customer Name</label>
         <input
           className="w-[4/5] border-b border-gray-300 focus:border-black outline-none py-1"
@@ -348,9 +441,11 @@ const payableAmount = useMemo(
             setCustomer({ ...customer, name: e.target.value })
           }
         />
-      </div>
+      </div> */}
 
-      <div>
+      
+
+      {/* <div>
         <label className="text-xs font-medium">Address</label>
         <input
           className="w-[4/5] border-b border-gray-300 focus:border-black outline-none py-1"
@@ -366,7 +461,115 @@ const payableAmount = useMemo(
         <input
           className="w-[4/5] border-b border-gray-300 focus:border-black outline-none py-1"
         />
-      </div>
+      </div> */}
+
+      <div className="space-y-2">
+  {/* <div className="flex items-end gap-3">
+    <label className="w-24 text-xs font-medium">Name</label>
+    <input
+      className="flex-1 border-b border-gray-300 focus:border-black outline-none py-1"
+      value={customer.name}
+      onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+    />
+  </div> */}
+
+  <div className="flex items-end gap-3 relative">
+  <label className="w-24 text-xs font-medium">Name</label>
+
+  <input
+    className="flex-1 border-b border-gray-300 focus:border-black outline-none py-1"
+    value={searchTerm}
+    onChange={(e) => {
+      setSearchTerm(e.target.value);
+      setShowDropdown(true);
+    }}
+    onFocus={() => setShowDropdown(true)}
+  />
+
+  {showDropdown && customers.length > 0 && (
+    <div className="absolute top-8 left-24 w-[300px] bg-white border rounded shadow-md max-h-40 overflow-y-auto z-50">
+      {customers.map((cust) => (
+        <div
+          key={cust._id}
+          className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+          onClick={() => {
+            setCustomer({
+              name: cust.firstname + " " + cust.lastname,
+              address: cust.address || "",
+              contact: cust.mobile || "",
+            });
+            setSearchTerm(cust.firstname + " " + cust.lastname);
+            setShowDropdown(false);
+          }}
+        >
+          {cust.firstname} {cust.lastname}
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+
+  <div className="flex items-end gap-3">
+    <label className="w-24 text-xs font-medium">Address</label>
+    <input
+      className="flex-1 border-b border-gray-300 focus:border-black outline-none py-1"
+      value={customer.address}
+      onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
+    />
+  </div>
+
+  {/* <div className="flex items-end gap-3">
+    <label className="w-24 text-xs font-medium">Contact</label>
+    <input
+      className="flex-1 border-b border-gray-300 focus:border-black outline-none py-1"
+      value={customer.contact}
+      onChange={(e) => setCustomer({ ...customer, contact: e.target.value })}
+    />
+  </div> */}
+
+  <div className="flex items-end gap-3 relative">
+  <label className="w-24 text-xs font-medium">Contact</label>
+
+  <input
+    className="flex-1 border-b border-gray-300 focus:border-black outline-none py-1"
+    value={contactSearch}
+    onChange={(e) => {
+      setContactSearch(e.target.value);
+      setShowContactDropdown(true);
+    }}
+    onFocus={() => setShowContactDropdown(true)}
+  />
+
+  {showContactDropdown && customers.length > 0 && (
+    <div className="absolute top-8 left-24 w-[300px] bg-white border rounded shadow-md max-h-40 overflow-y-auto z-50">
+      {customers.map((cust) => (
+        <div
+          key={cust._id}
+          className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+          onClick={() => {
+            setCustomer({
+              name: cust.firstname + " " + cust.lastname,
+              address: cust.address || "",
+              contact: cust.mobile || "",
+            });
+            setContactSearch(cust.mobile);
+            setSearchTerm(cust.firstname + " " + cust.lastname);
+            setShowContactDropdown(false);
+          }}
+        >
+          <div>{cust.mobile}</div>
+          <div className="text-xs text-gray-500">
+            {cust.firstname} {cust.lastname}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+</div>
+
     </div>
 
     {/* RIGHT – Date / Time (34%) */}
@@ -543,34 +746,50 @@ const payableAmount = useMemo(
         <td>₹ {grandTotal.toFixed(2)}</td>
 
         <td>
-          <input
+          {/* <input
             type="number"
             className="w-16 text-center border rounded"
             value={cgstPercent}
             onChange={(e) => setCgstPercent(+e.target.value)}
-          />
+          /> */}
+
+          <input
+  type="number"
+  min={0}
+  step={1}
+  className="w-16 text-center border rounded"
+  value={cgstPercent}
+  onChange={(e) => setCgstPercent(clampNonNegative(e.target.value))}
+/>
+
         </td>
 
         <td>₹ {cgstAmount.toFixed(2)}</td>
 
         <td>
-          <input
-            type="number"
-            className="w-16 text-center border rounded"
-            value={sgstPercent}
-            onChange={(e) => setSgstPercent(+e.target.value)}
-          />
+         <input
+  type="number"
+  min={0}
+  step={1}
+  className="w-16 text-center border rounded"
+  value={sgstPercent}
+  onChange={(e) => setSgstPercent(clampNonNegative(e.target.value))}
+/>
+
         </td>
 
         <td>₹ {sgstAmount.toFixed(2)}</td>
 
         <td>
           <input
-            type="number"
-            className="w-16 text-center border rounded"
-            value={discountPercent}
-            onChange={(e) => setDiscountPercent(+e.target.value)}
-          />
+  type="number"
+  min={0}
+  step={1}
+  className="w-16 text-center border rounded"
+  value={discountPercent}
+  onChange={(e) => setDiscountPercent(clampNonNegative(e.target.value))}
+/>
+
         </td>
 
         <td>₹ {discountAmount.toFixed(2)}</td>

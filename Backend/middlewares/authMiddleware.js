@@ -13,22 +13,35 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         // console.log(decoded);
         const user = await User.findById(decoded?.id);
+        if (!user) throw new Error("User no longer exists");
         req.user = user;
         next();
       }
-    } catch (error) {
-      throw new Error("Not Authorized token expired,Please Login again");
-    }
+    } 
+    // catch (error) {
+    //   throw new Error("Not Authorized token expired,Please Login again");
+    // }
+
+    catch (error) {
+  res.status(401);
+  throw new Error("Not Authorized token expired,Please Login again");
+}
+  // } else {
+  //   throw new Error("THere is no token attached to header");
+  // }
+
   } else {
-    throw new Error("THere is no token attached to header");
-  }
+  res.status(401);
+  throw new Error("THere is no token attached to header");
+}
 });
 
 const isAdmin = asyncHandler(async (req, res, next) => {
   const { email } = req.user;
   const adminUser = await User.findOne({ email });
 
-  if (adminUser.role !== "admin") {
+  if (adminUser?.role !== "admin") {
+    res.status(403);
     throw new Error("Your are not an admin");
   } else {
     next();

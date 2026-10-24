@@ -4,10 +4,24 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#0d1b2a" />
+    <script>
+      // Set the theme before first paint so there is no light/dark flash
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (t !== "light" && t !== "dark") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
     <meta
       name="description"
-      content="Web site created using create-react-app"
+      content="Cart Corner – shop fashion, electronics and more with fast delivery across India."
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,7 +39,7 @@
 
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
-    <title>E Commerce App</title>
+    <title>Cart Corner</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

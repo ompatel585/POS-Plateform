@@ -58,6 +58,7 @@ export const resetState = createAction("Reset_all");
 
 const initialState = {
   products: [],
+
   isError: false,
   isLoading: false,
   isSuccess: false,
@@ -112,8 +113,21 @@ export const productSlice = createSlice({
         state.productBrand = action.payload.brand;
         state.productCategory = action.payload.category;
         state.productTag = action.payload.tags;
-        state.productColors = action.payload.color;
+//         state.productColors = action.payload.color?._id || "";
+//         // state.productSize = action.payload.size;
+//         state.productSize = action.payload.size || [];
+// state.productVideos = action.payload.videos || [];
+
+
+state.productColors = action.payload.color?.[0]?._id || "";
+state.productSize = action.payload.size || [];
+state.productVideos = action.payload.videos || [];
+
         state.productQuantity = action.payload.quantity;
+        state.inventory = action.payload.inventory;
+        state.sizeStock = action.payload.sizeStock || [];
+
+
 
         state.productImages = action.payload.images;
       })

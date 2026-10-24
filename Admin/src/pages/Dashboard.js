@@ -11,6 +11,7 @@ import {
 
 import {  DatePicker } from "antd";
 import dayjs from "dayjs";
+import DashboardInsights from "../components/DashboardInsights";
 
 
 
@@ -60,6 +61,9 @@ const filteredOrders = useMemo(() => {
   if (!orderState) return [];
 
   return orderState.filter((order) => {
+    // cancelled orders bring in no money
+    if (order.orderStatus === "Cancelled") return false;
+
     // mode filter
     if ((order.mode || "ONLINE") !== selectedMode) return false;
 
@@ -83,7 +87,7 @@ const filteredOrders = useMemo(() => {
 
 const totalIncome = useMemo(() => {
   return filteredOrders.reduce(
-    (sum, order) => sum + (order.totalPrice || 0),
+    (sum, order) => sum + (order.totalPriceAfterDiscount ?? order.totalPrice ?? 0),
     0
   );
 }, [filteredOrders]);
@@ -94,7 +98,6 @@ const totalSales = useMemo(() => {
 
 
 
-  console.log(orderState);
 
   const [dataMonthly, setDataMonthly] = useState([]);
   const [dataMonthlySales, setDataMonthlySales] = useState([]);
@@ -136,7 +139,7 @@ useEffect(() => {
     const month = monthNames[date.getMonth()];
 
     incomeByMonth[month] =
-      (incomeByMonth[month] || 0) + order.totalPrice;
+      (incomeByMonth[month] || 0) + (order.totalPriceAfterDiscount ?? order.totalPrice ?? 0);
 
     salesByMonth[month] =
       (salesByMonth[month] || 0) + 1;
@@ -159,7 +162,11 @@ useEffect(() => {
   setOrderData(
     filteredOrders.map((order, i) => ({
       key: i,
-      name: `${order.user.firstname} ${order.user.lastname}`,
+      // name: `${order.user.firstname} ${order.user.lastname}`,
+      name: order.user
+  ? `${order.user.firstname || ""} ${order.user.lastname || ""}`
+  : "Deleted User",
+
       product: order.orderItems?.length,
       price: order.totalPrice,
       dprice: order.totalPriceAfterDiscount,
@@ -232,6 +239,7 @@ useEffect(() => {
   return (
     <div>
       <h3 className="mb-4 title">Dashboard</h3>
+      <DashboardInsights />
       {/* <div className="flex gap-2 mb-4">
   <button
     className={`px-4 py-1 rounded text-sm ${

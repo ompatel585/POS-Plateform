@@ -1,68 +1,49 @@
 import React, { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { BsHeart } from "react-icons/bs";
 import BreadCrumb from "../components/BreadCrumb";
 import Meta from "../components/Meta";
 import Container from "../components/Container";
-import { useDispatch, useSelector } from "react-redux";
-import { addToWishlist } from "../features/products/productSlilce";
+import ProductGrid from "../components/ProductCard";
+import EmptyState from "../components/EmptyState";
 import { getuserProductWishlist } from "../features/user/userSlice";
+
 const Wishlist = () => {
   const dispatch = useDispatch();
-  useEffect(() => {
-    getWishlistFromDb();
-  }, []);
-  const getWishlistFromDb = () => {
-    dispatch(getuserProductWishlist());
-  };
+  const wishlist = useSelector((state) => state?.auth?.wishlist?.wishlist);
+  const wishlistIds = useSelector((state) => state?.auth?.wishlistIds) || [];
 
-  const wishlistState = useSelector((state) => state?.auth?.wishlist?.wishlist);
-  const removeFromWishlist = (id) => {
-    dispatch(addToWishlist(id));
-    setTimeout(() => {
-      dispatch(getuserProductWishlist());
-    }, 300);
-  };
+  useEffect(() => {
+    dispatch(getuserProductWishlist());
+  }, [dispatch]);
+
+  // Hearts toggle instantly; filtering by ids keeps the page in sync without a refetch
+  const items = (wishlist || []).filter((p) => wishlistIds.includes(p?._id));
+
   return (
     <>
-      <Meta title={"Wishlist"} />
+      <Meta title="Wishlist | Cart Corner" />
       <BreadCrumb title="Wishlist" />
-      <Container class1="wishlist-wrapper home-wrapper-2 py-5">
-        <div className="row">
-          {wishlistState && wishlistState.length === 0 && (
-            <div className="text-center fs-3">No Data</div>
-          )}
-          {wishlistState &&
-            wishlistState?.map((item, index) => {
-              return (
-                <div className="col-3" key={index}>
-                  <div className="wishlist-card position-relative">
-                    <img
-                      onClick={() => {
-                        removeFromWishlist(item?._id);
-                      }}
-                      src="images/cross.svg"
-                      alt="cross"
-                      className="position-absolute cross img-fluid"
-                    />
-                    <div className="wishlist-card-image">
-                      <img
-                        src={
-                          item?.images[0].url
-                            ? item?.images[0].url
-                            : "images/watch.jpg"
-                        }
-                        className="img-fluid w-100"
-                        alt="watch"
-                      />
-                    </div>
-                    <div className="py-3 px-3">
-                      <h5 className="title">{item?.title}</h5>
-                      <h6 className="price">Rs. {item?.price}</h6>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+      <Container class1="wishlist-wrapper home-wrapper-2 py-4">
+        <div className="section-head">
+          <div>
+            <h1 className="page-title">My wishlist</h1>
+            <p>{items.length} saved {items.length === 1 ? "item" : "items"}</p>
+          </div>
         </div>
+        {wishlist === undefined ? (
+          <ProductGrid loading skeletons={4} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={<BsHeart />}
+            title="Your wishlist is empty"
+            message="Tap the heart on any product to save it here for later."
+            actionLabel="Discover products"
+            actionTo="/product"
+          />
+        ) : (
+          <ProductGrid products={items} />
+        )}
       </Container>
     </>
   );

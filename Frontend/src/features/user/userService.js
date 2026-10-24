@@ -123,7 +123,13 @@ const emptyCart = async (data) => {
   }
 };
 
+const cancelOrder = async (id) => {
+  const response = await axios.put(`${base_url}user/order/${id}/cancel`, {}, config);
+  return response.data;
+};
+
 export const authService = {
+  cancelOrder,
   register,
   login,
   getUserWislist,

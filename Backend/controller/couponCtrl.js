@@ -1,6 +1,7 @@
 const Coupon = require("../models/couponModel");
 const validateMongoDbId = require("../utils/validateMongodbId");
 const asynHandler = require("express-async-handler");
+const { computeCartTotals } = require("../utils/orderHelpers");
 
 const createCoupon = asynHandler(async (req, res) => {
   try {
@@ -50,7 +51,18 @@ const getCoupon = asynHandler(async (req, res) => {
     throw new Error(error);
   }
 });
+// Checks a code for the logged-in customer and returns the cart totals with it applied
+const applyCoupon = asynHandler(async (req, res) => {
+  try {
+    const { items, ...summary } = await computeCartTotals(req.user._id, req.body.coupon);
+    res.json(summary);
+  } catch (error) {
+    res.status(400);
+    throw error;
+  }
+});
 module.exports = {
+  applyCoupon,
   createCoupon,
   getAllCoupons,
   updateCoupon,

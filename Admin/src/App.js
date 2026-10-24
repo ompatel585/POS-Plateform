@@ -2,6 +2,7 @@ import "./App.css";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import './utils/axiosSetup'
 
 import MainLayout from "./components/MainLayout";
 import Enquiries from "./pages/Enquiries";
@@ -26,6 +27,7 @@ import ViewOrder from "./pages/ViewOrder";
 import { OpenRoutes } from "./routing/OpenRoutes";
 import { PrivateRoutes } from "./routing/PrivateRoutes";
 import LiveBilling from "./pages/LiveBilling";
+import LowStock from "./pages/LowStock";
 function App() {
   return (
     <Router>
@@ -76,6 +78,7 @@ function App() {
           <Route path="product" element={<Addproduct />} />
           <Route path="product/:id" element={<Addproduct />} />
           <Route path="live-billing" element={<LiveBilling />} />
+          <Route path="low-stock" element={<LowStock />} />
           
 
 

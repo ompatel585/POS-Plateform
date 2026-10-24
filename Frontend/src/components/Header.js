@@ -1,237 +1,353 @@
-import React, { useEffect, useState } from "react";
-import { NavLink, Link, useNavigate } from "react-router-dom";
-import { BsSearch } from "react-icons/bs";
-import compare from "../images/compare.svg";
-import wishlist from "../images/wishlist.svg";
-import user from "../images/user.svg";
-import cart from "../images/cart.svg";
-import menu from "../images/menu.svg";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Typeahead } from "react-bootstrap-typeahead";
-import "react-bootstrap-typeahead/css/Typeahead.css";
-import { getAProduct } from "../features/products/productSlilce";
-import { getUserCart } from "../features/user/userSlice";
+import axios from "axios";
+import {
+  BsSearch,
+  BsHeart,
+  BsPerson,
+  BsBag,
+  BsList,
+  BsX,
+  BsGrid,
+  BsChevronDown,
+  BsBoxSeam,
+  BsBoxArrowRight,
+} from "react-icons/bs";
+import { getUserCart, getuserProductWishlist } from "../features/user/userSlice";
+import { base_url } from "../utils/axiosConfig";
+import { cartSubtotal, formatPrice, FREE_SHIPPING_ABOVE } from "../utils/pricing";
+import ThemeToggle from "./ThemeToggle";
+
+const NAV_LINKS = [
+  { to: "/", label: "Home", end: true },
+  { to: "/product", label: "Shop" },
+  { to: "/my-orders", label: "My Orders" },
+  { to: "/blogs", label: "Blogs" },
+  { to: "/contact", label: "Contact" },
+];
+
+const MAX_SUGGESTIONS = 6;
+
+export const logoutCustomer = () => {
+  // Only remove session data, so theme and recently viewed survive a logout
+  ["customer", "token", "address"].forEach((key) => localStorage.removeItem(key));
+  window.location.replace("/");
+};
 
 const Header = () => {
   const dispatch = useDispatch();
-  const cartState = useSelector((state) => state?.auth?.cartProducts);
-  const authState = useSelector((state) => state?.auth);
-  const [total, setTotal] = useState(null);
-  const [paginate, setPaginate] = useState(true);
-  const productState = useSelector((state) => state?.product?.product);
   const navigate = useNavigate();
+  const location = useLocation();
+  const user = useSelector((state) => state?.auth?.user);
+  const cart = useSelector((state) => state?.auth?.cartProducts);
+  const wishlistIds = useSelector((state) => state?.auth?.wishlistIds) || [];
 
-  const getTokenFromLocalStorage = localStorage.getItem("customer")
-    ? JSON.parse(localStorage.getItem("customer"))
-    : null;
-
-  const config2 = {
-    headers: {
-      Authorization: `Bearer ${
-        getTokenFromLocalStorage !== null ? getTokenFromLocalStorage.token : ""
-      }`,
-      Accept: "application/json",
-    },
-  };
+  const [catalog, setCatalog] = useState([]);
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const searchRef = useRef(null);
 
   useEffect(() => {
-    dispatch(getUserCart(config2));
+    if (user) {
+      dispatch(getUserCart());
+      dispatch(getuserProductWishlist());
+    }
+  }, [dispatch, user]);
+
+  // The header keeps its own copy of the catalogue, so search and categories
+  // are not affected by filters applied on the store page
+  useEffect(() => {
+    axios
+      .get(`${base_url}product`, { params: { store: true } })
+      .then((res) => setCatalog(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setCatalog([]));
   }, []);
 
-  const [productOpt, setProductOpt] = useState([]);
   useEffect(() => {
-    let sum = 0;
-    for (let index = 0; index < cartState?.length; index++) {
-      sum = sum + Number(cartState[index].quantity) * cartState[index].price;
-      setTotal(sum);
-    }
-  }, [cartState]);
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
-    let data = [];
-    for (let index = 0; index < productState?.length; index++) {
-      const element = productState[index];
-      data.push({ id: index, prod: element?._id, name: element?.title });
-    }
-    setProductOpt(data);
-  }, [productState]);
+    setDrawerOpen(false);
+    setShowSuggestions(false);
+  }, [location.pathname, location.search]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    window.location.reload();
+  useEffect(() => {
+    const close = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const categories = useMemo(
+    () => [...new Set(catalog.map((p) => p.category).filter(Boolean))].sort(),
+    [catalog]
+  );
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return catalog
+      .filter((p) =>
+        [p.title, p.brand, p.category].some((f) => f?.toLowerCase().includes(q))
+      )
+      .slice(0, MAX_SUGGESTIONS);
+  }, [catalog, query]);
+
+  const cartCount = cart?.length || 0;
+  const cartTotal = cartSubtotal(cart);
+
+  const goToSearch = (e) => {
+    e?.preventDefault();
+    if (activeIndex >= 0 && suggestions[activeIndex]) {
+      navigate(`/product/${suggestions[activeIndex]._id}`);
+    } else if (query.trim()) {
+      navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+    }
+    setShowSuggestions(false);
+    setActiveIndex(-1);
   };
+
+  const onSearchKeyDown = (e) => {
+    if (!suggestions.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
+  };
+
   return (
     <>
-      <header className="header-top-strip py-3">
-        <div className="container-xxl">
-          <div className="row">
-            <div className="col-6">
-              <p className="text-white mb-0">Free Shipping Over Rs.100</p>
-            </div>
-            <div className="col-6">
-              <p className="text-end text-white mb-0">
-                Hotline:
-                <a className="text-white" href="tel:+91 8264954234">
-                  +91 8264954234
-                </a>
-              </p>
-            </div>
+      <header className={`site-header ${scrolled ? "scrolled" : ""}`}>
+        <div className="topbar py-2">
+          <div className="container-xxl d-flex justify-content-between gap-3">
+            <span>Free shipping on orders over {formatPrice(FREE_SHIPPING_ABOVE)}</span>
+            <span className="d-none d-sm-inline">
+              Hotline: <a href="tel:+918264954234">+91 82649 54234</a>
+            </span>
           </div>
         </div>
-      </header>
-      <header className="header-upper py-3">
+
         <div className="container-xxl">
-          <div className="row align-items-center">
-            <div className="col-2">
-              <h2>
-                <Link className="text-white" to="/ ">
-                  Cart Corner
-                </Link>
-              </h2>
-            </div>
-            <div className="col-5">
-              <div className="input-group">
-                <Typeahead
-                  id="pagination-example"
-                  onPaginate={() => console.log("Results paginated")}
-                  onChange={(selected) => {
-                    navigate(`/product/${selected[0]?.prod}`);
-                    dispatch(getAProduct(selected[0]?.prod));
+          <div className="navbar-main">
+            <button
+              type="button"
+              className="icon-btn d-lg-none text-white"
+              aria-label="Open menu"
+              onClick={() => setDrawerOpen(true)}
+            >
+              <BsList />
+            </button>
+
+            <Link to="/" className="brand-logo">
+              Cart<span>Corner</span>
+            </Link>
+
+            <div className="search-box" ref={searchRef}>
+              <form onSubmit={goToSearch} role="search">
+                <input
+                  type="search"
+                  value={query}
+                  placeholder="Search products, brands and categories"
+                  aria-label="Search products"
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShowSuggestions(true);
+                    setActiveIndex(-1);
                   }}
-                  options={productOpt}
-                  paginate={paginate}
-                  labelKey={"name"}
-                  placeholder="Search for Products here"
+                  onFocus={() => setShowSuggestions(true)}
+                  onKeyDown={onSearchKeyDown}
                 />
-                <span className="input-group-text p-3" id="basic-addon2">
-                  <BsSearch className="fs-6" />
-                </span>
-              </div>
-            </div>
-            <div className="col-5">
-              <div className="header-upper-links d-flex align-items-center justify-content-between">
-                <div>
-                  {/* <Link
-                    to="/compare-product"
-                    className="d-flex align-items-center gap-10 text-white"
-                  >
-                    <img src={compare} alt="compare" />
-                    <p className="mb-0">
-                      Compare <br /> Products
-                    </p>
-                  </Link> */}
-                </div>
-                <div>
-                  <Link
-                    to="/wishlist"
-                    className="d-flex align-items-center gap-10 text-white"
-                  >
-                    <img src={wishlist} alt="wishlist" />
-                    <p className="mb-0">
-                      Favourite <br /> wishlist
-                    </p>
-                  </Link>
-                </div>
-                <div>
-                  <Link
-                    to={authState?.user === null ? "/login" : "my-profile"}
-                    className="d-flex align-items-center gap-10 text-white"
-                  >
-                    <img src={user} alt="user" />
-                    {authState?.user === null ? (
-                      <p className="mb-0">
-                        Log in <br /> My Account
-                      </p>
-                    ) : (
-                      <p className="mb-0">
-                        Welcome {authState?.user?.firstname}
-                      </p>
-                    )}
-                  </Link>
-                </div>
-                <div>
-                  <Link
-                    to="/cart"
-                    className="d-flex align-items-center gap-10 text-white"
-                  >
-                    <img src={cart} alt="cart" />
-                    <div className="d-flex flex-column gap-10">
-                      <span className="badge bg-white text-dark">
-                        {cartState?.length ? cartState?.length : 0}
-                      </span>
-                      <p className="mb-0">
-                        Rs. {!cartState?.length ? 0 : total ? total : 0}
-                      </p>
-                    </div>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-      <header className="header-bottom py-3">
-        <div className="container-xxl">
-          <div className="row">
-            <div className="col-12">
-              <div className="menu-bottom d-flex align-items-center gap-30">
-                <div>
-                  <div className="dropdown">
-                    <button
-                      className="btn btn-secondary dropdown-toggle bg-transparent border-0 gap-15 d-flex align-items-center"
-                      type="button"
-                      id="dropdownMenuButton1"
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
-                    >
-                      <img src={menu} alt="" />
-                      <span className="me-5 d-inline-block">
-                        Shop Categories
-                      </span>
-                    </button>
-                    <ul
-                      className="dropdown-menu"
-                      aria-labelledby="dropdownMenuButton1"
-                    >
-                      {productState &&
-                        productState.map((item, index) => {
-                          return (
-                            <li key={index}>
-                              <Link className="dropdown-item text-white" to="">
-                                {item?.category}
-                              </Link>
-                            </li>
-                          );
-                        })}
-                    </ul>
-                  </div>
-                </div>
-                <div className="menu-links">
-                  <div className="d-flex align-items-center gap-15">
-                    <NavLink to="/">Home</NavLink>
-                    <NavLink to="/product">Our Store</NavLink>
-                    <NavLink to="/my-orders">My Orders</NavLink>
-                    <NavLink to="/blogs">Blogs</NavLink>
-                    <NavLink to="/contact">Contact</NavLink>
-                    {authState?.user !== null ? (
+                <button type="submit" aria-label="Search">
+                  <BsSearch />
+                </button>
+              </form>
+              {showSuggestions && query.trim() && (
+                <div className="search-results">
+                  {suggestions.length === 0 ? (
+                    <div className="p-3 text-muted small">No matches for “{query}”</div>
+                  ) : (
+                    suggestions.map((p, i) => (
                       <button
-                        className="border border-0 bg-trasparent text-white text-uppercase"
                         type="button"
-                        style={{ backgroundColor: "#232f3e" }}
-                        onClick={handleLogout}
+                        key={p._id}
+                        className={`search-result ${i === activeIndex ? "active" : ""}`}
+                        onMouseEnter={() => setActiveIndex(i)}
+                        onClick={() => navigate(`/product/${p._id}`)}
                       >
-                        LogOut
+                        {p.images?.[0]?.url ? (
+                          <img src={p.images[0].url} alt="" />
+                        ) : (
+                          <img alt="" />
+                        )}
+                        <span className="flex-grow-1">
+                          <span className="title d-block">{p.title}</span>
+                          <span className="meta">
+                            {p.brand} · {p.category}
+                          </span>
+                        </span>
+                        <strong>{formatPrice(p.price)}</strong>
                       </button>
-                    ) : (
-                      ""
-                    )}
-                  </div>
+                    ))
+                  )}
+                  <Link className="search-all" to={`/search?q=${encodeURIComponent(query.trim())}`}>
+                    See all results for “{query.trim()}”
+                  </Link>
                 </div>
-              </div>
+              )}
+            </div>
+
+            <div className="header-actions">
+              <ThemeToggle />
+              <Link to="/wishlist" className="icon-btn d-none d-sm-inline-flex" aria-label="Wishlist">
+                <BsHeart />
+                {wishlistIds.length > 0 && <span className="badge-count">{wishlistIds.length}</span>}
+              </Link>
+
+              {user ? (
+                <div className="dropdown">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    aria-label="Account menu"
+                  >
+                    <BsPerson />
+                  </button>
+                  <ul className="dropdown-menu dropdown-menu-end">
+                    <li className="px-3 py-2 small text-muted">
+                      Hi, <strong className="text-dark">{user.firstname}</strong>
+                    </li>
+                    <li><Link className="dropdown-item" to="/my-profile">My Profile</Link></li>
+                    <li><Link className="dropdown-item" to="/my-orders">My Orders</Link></li>
+                    <li><Link className="dropdown-item" to="/wishlist">Wishlist</Link></li>
+                    <li><hr className="dropdown-divider" /></li>
+                    <li>
+                      <button type="button" className="dropdown-item text-danger" onClick={logoutCustomer}>
+                        Log out
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <Link to="/login" className="icon-btn" aria-label="Log in">
+                  <BsPerson />
+                </Link>
+              )}
+
+              <Link to="/cart" className="d-flex align-items-center gap-2 text-white ms-1">
+                <span className="icon-btn" aria-hidden="true">
+                  <BsBag />
+                  {cartCount > 0 && <span className="badge-count">{cartCount}</span>}
+                </span>
+                <span className="header-action-label d-none d-xl-block">
+                  Cart
+                  <strong>{formatPrice(cartTotal)}</strong>
+                </span>
+              </Link>
             </div>
           </div>
         </div>
+
+        <nav className="nav-strip" aria-label="Main">
+          <div className="container-xxl">
+            <div className="dropdown">
+              <button type="button" className="cat-menu-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                <BsGrid /> Shop by category <BsChevronDown size={12} />
+              </button>
+              <ul className="dropdown-menu cat-menu">
+                {categories.length === 0 && <li className="px-3 py-2 small text-muted">No categories yet</li>}
+                {categories.map((c) => (
+                  <li key={c}>
+                    <Link className="dropdown-item" to={`/category/${encodeURIComponent(c)}`}>
+                      {c}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="d-flex align-items-center gap-1 ms-auto">
+              {NAV_LINKS.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  end={l.end}
+                  className={({ isActive }) => `nav-link-item ${isActive ? "active" : ""}`}
+                >
+                  {l.label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        </nav>
       </header>
+
+      {drawerOpen && (
+        <>
+          <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+          <aside className="drawer left" aria-label="Menu">
+            <div className="drawer-head">
+              <Link to="/" className="brand-logo" style={{ color: "var(--text)" }}>
+                Cart<span>Corner</span>
+              </Link>
+              <button type="button" className="icon-btn" aria-label="Close menu" onClick={() => setDrawerOpen(false)}>
+                <BsX />
+              </button>
+            </div>
+            <div className="drawer-body">
+              {NAV_LINKS.map((l) => (
+                <NavLink
+                  key={l.to}
+                  to={l.to}
+                  end={l.end}
+                  className={({ isActive }) => `drawer-link ${isActive ? "active" : ""}`}
+                >
+                  {l.label}
+                </NavLink>
+              ))}
+              <NavLink to="/wishlist" className="drawer-link">Wishlist</NavLink>
+
+              {categories.length > 0 && <div className="drawer-title">Categories</div>}
+              {categories.map((c) => (
+                <Link key={c} to={`/category/${encodeURIComponent(c)}`} className="drawer-link text-capitalize">
+                  {c}
+                </Link>
+              ))}
+
+              <div className="drawer-title">Account</div>
+              {user ? (
+                <>
+                  <Link to="/my-profile" className="drawer-link"><BsPerson /> {user.firstname}'s profile</Link>
+                  <Link to="/my-orders" className="drawer-link"><BsBoxSeam /> My orders</Link>
+                  <button type="button" className="drawer-link border-0 bg-transparent w-100 text-danger" onClick={logoutCustomer}>
+                    <BsBoxArrowRight /> Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" className="drawer-link">Log in</Link>
+                  <Link to="/signup" className="drawer-link">Create account</Link>
+                </>
+              )}
+            </div>
+          </aside>
+        </>
+      )}
     </>
   );
 };

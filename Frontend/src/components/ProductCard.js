@@ -1,179 +1,148 @@
-import React, { useEffect } from "react";
-import ReactStars from "react-rating-stars-component";
-import { useLocation, useNavigate } from "react-router-dom";
-
-import wish from "../images/wish.svg";
-// import wishlist from "../images/wishlist.svg";
-// import watch from "../images/watch.jpg";
-// import watch2 from "../images/watch-1.avif";
-// import addcart from "../images/add-cart.svg";
-import view from "../images/view.svg";
+import React from "react";
+import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { addToWishlist } from "../features/products/productSlilce";
+import { toast } from "react-toastify";
 import { AiFillHeart, AiOutlineHeart } from "react-icons/ai";
-import { useState } from "react";
+import { BsBag } from "react-icons/bs";
+import { addToWishlist } from "../features/products/productSlilce";
+import { addProdToCart, getUserCart } from "../features/user/userSlice";
+import { formatPrice, stockFor, LOW_STOCK_LIMIT } from "../utils/pricing";
+import Stars from "./Stars";
 
+const NEW_FOR_DAYS = 14;
 
-const ProductCard = (props) => {
+const isNew = (product) =>
+  product?.createdAt &&
+  Date.now() - new Date(product.createdAt).getTime() < NEW_FOR_DAYS * 864e5;
+
+export const ProductCard = ({ product }) => {
   const navigate = useNavigate();
-  const { grid, data } = props;
   const dispatch = useDispatch();
-  console.log(data);
-  const location = useLocation();
+  const user = useSelector((state) => state?.auth?.user);
+  const wishlistIds = useSelector((state) => state?.auth?.wishlistIds) || [];
 
+  const inWishlist = wishlistIds.includes(product?._id);
+  const stock = stockFor(product);
+  const outOfStock = stock <= 0;
+  const hasSizes = product?.sizeStock?.length > 0;
+  const openProduct = () => navigate(`/product/${product?._id}`);
 
-  const isVideo = (url) => {
-  return url?.includes("/video/") || url?.endsWith(".mp4");
-};
-
-
-  const wishlistState = useSelector((state) => state?.auth?.wishlist?.wishlist);
-
-  const [wishlist, setWishlist] = useState(wishlistState || []);
-
-  useEffect(() => {
-    setWishlist(wishlistState || []);
-  }, [wishlistState]);
-
-  const isProductInWishlist = (productId) => {
-    return wishlist?.some((item) => item._id === productId);
+  const requireLogin = () => {
+    toast.info("Please log in first");
+    navigate("/login");
   };
 
-  const addToWish = (productId) => {
-    if (isProductInWishlist(productId)) {
-      dispatch(addToWishlist(productId)); // Dispatch the action to update the wishlist in Redux store
-
-      const updatedWishlist = wishlist.filter((item) => item._id !== productId);
-      setWishlist(updatedWishlist);
-    } else {
-      dispatch(addToWishlist(productId)); // Dispatch the action to update the wishlist in Redux store
-
-      const product = data.find((item) => item._id === productId);
-      setWishlist([...wishlist, product]);
-    }
+  const toggleWishlist = (e) => {
+    e.stopPropagation();
+    if (!user) return requireLogin();
+    dispatch(addToWishlist(product._id));
+    toast.success(inWishlist ? "Removed from wishlist" : "Added to wishlist");
   };
+
+  const quickAdd = async (e) => {
+    e.stopPropagation();
+    if (hasSizes) return openProduct(); // a size has to be picked first
+    if (!user) return requireLogin();
+    const result = await dispatch(
+      addProdToCart({
+        productId: product._id,
+        quantity: 1,
+        color: product.color?._id || product.color || null,
+      })
+    );
+    if (!result.error) dispatch(getUserCart());
+  };
+
+  const video = product?.videos?.[0]?.url;
+  const image = product?.images?.[0]?.url;
 
   return (
-    <>
-      {data?.map((item, index) => {
-        const isWishlist = isProductInWishlist(item._id);
-        console.log(isWishlist);
-        return (
-          <div
-            key={index}
-            className={` ${
-              location.pathname == "/product" ? `gr-${grid}` : "col-3"
-            } `}
-          >
-            <div className="product-card position-relative">
-              <div className="wishlist-icon position-absolute">
-                <button
-                  className="border-0 bg-transparent"
-                  onClick={(e) => addToWish(item?._id)}
-                >
-                  {isWishlist ? (
-                    <AiFillHeart className="fs-5 me-1" />
-                  ) : (
-                    <AiOutlineHeart className="fs-5 me-1" />
-                  )}
-                </button>
-              </div>
+    <article className="product-card">
+      <div className="product-media" onClick={openProduct}>
+        {image ? (
+          <img src={image} alt={product?.title || "product"} loading="lazy" />
+        ) : video ? (
+          <video
+            src={video}
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+            onMouseLeave={(e) => {
+              e.currentTarget.pause();
+              e.currentTarget.currentTime = 0;
+            }}
+          />
+        ) : (
+          <div className="no-media">No image</div>
+        )}
 
-              {/* <div className="product-image">
-                <img
-                  src={item?.images[0]?.url}
-                  // className="img-fluid d"
-                  alt="product image"
-                  height={"250px"}
-                  width={"100%"}
-                  onClick={() => navigate("/product/" + item?._id)}
-                />
-                <img
-                  src={item?.images[0]?.url}
-                  // className="img-fluid d"
-                  alt="product image"
-                  height={"250px"}
-                  width={"100%"}
-                  onClick={() => navigate("/product/" + item?._id)}
-                />
-              </div> */}
-              <div
-  className="product-image"
-  onClick={() => navigate("/product/" + item?._id)}
->
-  {/* {isVideo(item?.images?.[0]?.url) ? (
-    <video
-      src={item.images[0].url}
-      muted
-      playsInline
-      preload="metadata"
-      style={{
-        width: "100%",
-        height: "250px",
-        objectFit: "cover",
-      }}
-    />
-  ) : (
-    <img
-      src={item?.images?.[0]?.url}
-      alt="product"
-      style={{
-        width: "100%",
-        height: "250px",
-        objectFit: "cover",
-      }}
-    />
-  )} */}
+        <div className="product-badges">
+          {outOfStock ? (
+            <span className="badge-chip out">Out of stock</span>
+          ) : stock <= LOW_STOCK_LIMIT ? (
+            <span className="badge-chip low">Only {stock} left</span>
+          ) : null}
+          {isNew(product) && !outOfStock && <span className="badge-chip new">New</span>}
+          {product?.tags === "popular" && <span className="badge-chip hot">Popular</span>}
+        </div>
 
-  <img
-  src={item?.images?.[0]?.url}
-  alt="product"
-  style={{ width: "100%", height: "250px", objectFit: "cover" }}
-/>
+        <button
+          type="button"
+          className={`wish-btn ${inWishlist ? "active" : ""}`}
+          onClick={toggleWishlist}
+          aria-label={inWishlist ? "Remove from wishlist" : "Add to wishlist"}
+        >
+          {inWishlist ? <AiFillHeart /> : <AiOutlineHeart />}
+        </button>
 
-</div>
-
-              <div className="product-details">
-                <h6 className="brand">{item?.brand}</h6>
-                <h5 className="product-title">
-                  {grid === 12 || grid === 6
-                    ? item?.title
-                    : item?.title?.substr(0, 80) + "..."}
-                </h5>
-                <ReactStars
-                  count={5}
-                  size={24}
-                  value={item?.totalrating}
-                  edit={false}
-                  activeColor="#ffd700"
-                />
-
-                <p className="price">Rs.{item?.price}</p>
-              </div>
-              <div className="action-bar position-absolute">
-                <div className="d-flex flex-column gap-15">
-                  {/* <button className="border-0 bg-transparent">
-                    <img src={prodcompare} alt="compare" />
-                  </button> */}
-
-                  {/* <button className="border-0 bg-transparent">
-                    <img
-                      onClick={() => navigate("/product/" + item?._id)}
-                      src={view}
-                      alt="view"
-                    />
-                  </button> */}
-                  {/* <button className="border-0 bg-transparent">
-                    <img src={addcart} alt="addcart" />
-                  </button> */}
-                </div>
-              </div>
-            </div>
+        {!outOfStock && (
+          <div className="quick-add">
+            <button type="button" className="button button-accent" onClick={quickAdd}>
+              <BsBag /> {hasSizes ? "Choose size" : "Add to cart"}
+            </button>
           </div>
-        );
-      })}
-    </>
+        )}
+      </div>
+
+      <div className="product-info">
+        <span className="product-brand">{product?.brand}</span>
+        <h3 className="product-title" onClick={openProduct} title={product?.title}>
+          {product?.title}
+        </h3>
+        {product?.ratings?.length > 0 && (
+          <div className="rating-line">
+            <Stars value={product.totalrating} />
+            <span>({product.ratings.length})</span>
+          </div>
+        )}
+        <p
+          className="product-desc"
+          dangerouslySetInnerHTML={{ __html: product?.description || "" }}
+        />
+        <p className="product-price">{formatPrice(product?.price)}</p>
+      </div>
+    </article>
   );
 };
 
-export default ProductCard;
+export const ProductSkeleton = () => (
+  <div className="skeleton-card" aria-hidden="true">
+    <div className="skeleton skeleton-media" />
+    <div className="skeleton skeleton-line" />
+    <div className="skeleton skeleton-line" />
+    <div className="skeleton skeleton-line short" />
+  </div>
+);
+
+// Grid of cards; `cols` sets the desktop column count, `view="list"` switches to rows
+const ProductGrid = ({ products, loading, cols = 4, view = "grid", skeletons = 8 }) => (
+  <div className={`product-grid ${view === "list" ? "list" : ""}`} style={{ "--cols": cols }}>
+    {loading
+      ? Array.from({ length: skeletons }).map((_, i) => <ProductSkeleton key={i} />)
+      : (products || []).map((p) => <ProductCard key={p._id} product={p} />)}
+  </div>
+);
+
+export default ProductGrid;

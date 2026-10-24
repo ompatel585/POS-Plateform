@@ -13,6 +13,18 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("./emailCtrl");
 const { createPasswordResetToken } = require("../models/userModel");
+const {
+  availableStock,
+  computeCartTotals,
+  deductStock,
+  restoreStock,
+} = require("../utils/orderHelpers");
+const { isValidSignature } = require("./paymentCtrl");
+
+// Never send these back to the client
+const PRIVATE_USER_FIELDS = "-password -refreshToken -passwordResetToken -passwordResetExpires";
+const PUBLIC_USER_FIELDS = "firstname lastname email mobile address";
+const CANCELLABLE_STATUSES = ["Ordered", "Processed"];
 
 
 
@@ -79,38 +91,97 @@ const createOfflineOrder = asyncHandler(async (req, res) => {
 });
 
 
+const registerUser = asyncHandler(async (req, res) => {
+  const { email, password, firstname, lastname, mobile } = req.body;
+
+  const existingUser = await User.findOne({ email });
+
+  // Case 1: New online user (fields are picked so nobody can sign up with role: "admin")
+  if (!existingUser) {
+    const newUser = await User.create({ firstname, lastname, email, mobile, password });
+    return res.json(await User.findById(newUser._id).select(PRIVATE_USER_FIELDS));
+  }
+
+  // Case 2: Offline user activating account
+  if (existingUser && !existingUser.password) {
+    existingUser.password = password;
+    await existingUser.save();
+
+    return res.json({
+      message: "Account activated successfully",
+    });
+  }
+
+  // Case 3: Already activated
+  throw new Error("User Already Exists");
+});
+
+
+
 // Create a User ----------------------------------------------
 
-const createUser = asyncHandler(async (req, res) => {
-  /**
-   * TODO:Get the email from req.body
-   */
-  const email = req.body.email;
-  /**
-   * TODO:With the help of email find the user exists or not
-   */
-  const findUser = await User.findOne({ email: email });
+// const createUser = asyncHandler(async (req, res) => {
+//   /**
+//    * TODO:Get the email from req.body
+//    */
+//   const email = req.body.email;
+//   /**
+//    * TODO:With the help of email find the user exists or not
+//    */
+//   const findUser = await User.findOne({ email: email });
 
-  if (!findUser) {
-    /**
-     * TODO:if user not found user create a new user
-     */
-    const newUser = await User.create(req.body);
-    res.json(newUser);
-  } else {
-    /**
-     * TODO:if user found then thow an error: User already exists
-     */
-    throw new Error("User Already Exists");
+//   if (!findUser) {
+//     /**
+//      * TODO:if user not found user create a new user
+//      */
+//     const newUser = await User.create(req.body);
+//     res.json(newUser);
+//   } else {
+//     /**
+//      * TODO:if user found then thow an error: User already exists
+//      */
+//     throw new Error("User Already Exists");
+//   }
+// });
+const createUser = asyncHandler(async (req, res) => {
+  const { email, firstname, lastname, mobile } = req.body;
+
+  const existingUser = await User.findOne({ email });
+
+  if (existingUser) {
+    throw new Error("User already exists");
   }
+
+  const newUser = await User.create({
+    firstname,
+    lastname,
+    email,
+    mobile,
+    password: null,   // IMPORTANT
+    role: "user",
+  });
+
+  res.json(newUser);
 });
+
+
 
 // Login a user
 const loginUserCtrl = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   // check if user exists or not
   const findUser = await User.findOne({ email });
-  if (findUser && (await findUser.isPasswordMatched(password))) {
+  // if (findUser && (await findUser.isPasswordMatched(password))) {
+  if (!findUser || !findUser.password) {
+  throw new Error("Invalid Credentials");
+}
+
+if (findUser.isBlocked) {
+  throw new Error("Your account has been blocked. Please contact support.");
+}
+
+if (await findUser.isPasswordMatched(password)) {
+
     const refreshToken = await generateRefreshToken(findUser?._id);
     const updateuser = await User.findByIdAndUpdate(
       findUser.id,
@@ -142,6 +213,7 @@ const loginAdmin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   // check if user exists or not
   const findAdmin = await User.findOne({ email });
+  if (!findAdmin || !findAdmin.password) throw new Error("Invalid Credentials");
   if (findAdmin.role !== "admin") throw new Error("Not Authorised");
   if (findAdmin && (await findAdmin.isPasswordMatched(password))) {
     const refreshToken = await generateRefreshToken(findAdmin?._id);
@@ -228,7 +300,7 @@ const updatedUser = asyncHandler(async (req, res) => {
       {
         new: true,
       }
-    );
+    ).select(PRIVATE_USER_FIELDS);
     res.json(updatedUser);
   } catch (error) {
     throw new Error(error);
@@ -261,7 +333,7 @@ const saveAddress = asyncHandler(async (req, res, next) => {
 
 const getallUser = asyncHandler(async (req, res) => {
   try {
-    const getUsers = await User.find().populate("wishlist");
+    const getUsers = await User.find().select(PRIVATE_USER_FIELDS).populate("wishlist");
     res.json(getUsers);
   } catch (error) {
     throw new Error(error);
@@ -275,7 +347,7 @@ const getaUser = asyncHandler(async (req, res) => {
   validateMongoDbId(id);
 
   try {
-    const getaUser = await User.findById(id);
+    const getaUser = await User.findById(id).select(PRIVATE_USER_FIELDS);
     res.json({
       getaUser,
     });
@@ -364,8 +436,7 @@ const forgotPasswordToken = asyncHandler(async (req, res) => {
     const token = await user.createPasswordResetToken();
 
     await user.save();
-    console.log(token);
-    const resetURL = `Hi, Please follow this link to reset Your Password. This link is valid till 10 minutes from now. <a href='http://localhost:3000/reset-password/${token}'>Click Here</>`;
+    const resetURL = `Hi, Please follow this link to reset Your Password. This link is valid till 10 minutes from now. <a href='${process.env.FRONTEND_URL}/reset-password/${token}'>Click Here</>`;
 
     const data = {
       to: email,
@@ -374,7 +445,8 @@ const forgotPasswordToken = asyncHandler(async (req, res) => {
       htm: resetURL,
     };
     sendEmail(data);
-    res.json(token);
+    // The token only goes out by email; returning it would let anyone reset any account
+    res.json({ message: "Password reset link sent to your email" });
   } catch (error) {
     throw new Error(error);
   }
@@ -393,13 +465,15 @@ const resetPassword = asyncHandler(async (req, res) => {
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
   await user.save();
-  res.json(user);
+  res.json({ message: "Password updated successfully" });
 });
 
 const getWishlist = asyncHandler(async (req, res) => {
   const { _id } = req.user;
   try {
-    const findUser = await User.findById(_id).populate("wishlist");
+    const findUser = await User.findById(_id)
+      .select(PRIVATE_USER_FIELDS)
+      .populate("wishlist");
     res.json(findUser);
   } catch (error) {
     throw new Error(error);
@@ -407,22 +481,54 @@ const getWishlist = asyncHandler(async (req, res) => {
 });
 
 const userCart = asyncHandler(async (req, res) => {
-  const { productId, color, quantity, price } = req.body;
+  const { productId, color, quantity, size } = req.body;
 
   const { _id } = req.user;
   validateMongoDbId(_id);
-  try {
-    let newCart = await new Cart({
-      userId: _id,
-      productId,
-      color,
-      price,
-      quantity,
-    }).save();
-    res.json(newCart);
-  } catch (error) {
-    throw new Error(error);
+  validateMongoDbId(productId);
+
+  const product = await Product.findById(productId);
+  if (!product) {
+    res.status(404);
+    throw new Error("Product not found");
   }
+  if (product.sizeStock?.length && !size) {
+    res.status(400);
+    throw new Error("Please choose a size");
+  }
+
+  // Adding the same product/colour/size again just increases the quantity
+  const existing = await Cart.findOne({
+    userId: _id,
+    productId,
+    color: color || null,
+    size: size || null,
+  });
+  const wanted = Number(quantity || 1) + (existing ? existing.quantity : 0);
+  const inStock = availableStock(product, size);
+  if (wanted > inStock) {
+    res.status(400);
+    throw new Error(
+      inStock > 0 ? `Only ${inStock} left in stock` : "This item is out of stock"
+    );
+  }
+
+  if (existing) {
+    existing.quantity = wanted;
+    existing.price = product.price;
+    await existing.save();
+    return res.json(existing);
+  }
+
+  const newCart = await new Cart({
+    userId: _id,
+    productId,
+    color: color || null,
+    size: size || null,
+    price: product.price,
+    quantity: wanted,
+  }).save();
+  res.json(newCart);
 });
 
 const getUserCart = asyncHandler(async (req, res) => {
@@ -472,51 +578,110 @@ const updateProductQuantityFromCart = asyncHandler(async (req, res) => {
   const { _id } = req.user;
   const { cartItemId, newQuantity } = req.params;
   validateMongoDbId(_id);
-  try {
-    const cartItem = await Cart.findOne({
-      userId: _id,
-      _id: cartItemId,
-    });
-    cartItem.quantity = newQuantity;
-    cartItem.save();
-    res.json(cartItem);
-  } catch (error) {
-    throw new Error(error);
+  const cartItem = await Cart.findOne({
+    userId: _id,
+    _id: cartItemId,
+  }).populate("productId");
+  if (!cartItem || !cartItem.productId) {
+    res.status(404);
+    throw new Error("Cart item not found");
   }
+  const qty = Math.max(1, Number(newQuantity) || 1);
+  const inStock = availableStock(cartItem.productId, cartItem.size);
+  if (qty > inStock) {
+    res.status(400);
+    throw new Error(`Only ${inStock} left in stock`);
+  }
+  cartItem.quantity = qty;
+  await cartItem.save();
+  res.json(cartItem);
 });
 
+// Order totals and items are rebuilt from the cart; the client only sends
+// the shipping address, the coupon code and the payment proof.
 const createOrder = asyncHandler(async (req, res) => {
-  const {
+  const { shippingInfo, paymentInfo = {}, coupon } = req.body;
+  const { _id } = req.user;
+
+  const totals = await computeCartTotals(_id, coupon);
+  if (!totals.items.length) {
+    res.status(400);
+    throw new Error("Your cart is empty");
+  }
+
+  const isCod = paymentInfo.method === "COD";
+  if (!isCod && !isValidSignature(paymentInfo)) {
+    res.status(400);
+    throw new Error("Payment could not be verified");
+  }
+
+  for (const item of totals.items) {
+    const inStock = availableStock(item.productId, item.size);
+    if (item.quantity > inStock) {
+      res.status(400);
+      throw new Error(`Only ${inStock} of ${item.productId.title} left in stock`);
+    }
+  }
+
+  const orderItems = totals.items.map((item) => ({
+    product: item.productId._id,
+    color: item.color || null,
+    size: item.size || null,
+    quantity: item.quantity,
+    price: item.productId.price,
+  }));
+
+  const order = await Order.create({
     shippingInfo,
     orderItems,
-    totalPrice,
-    totalPriceAfterDiscount,
-    paymentInfo,
-  } = req.body;
-  const { _id } = req.user;
-  try {
-    const order = await Order.create({
-      shippingInfo,
-      orderItems,
-      totalPrice,
-      totalPriceAfterDiscount,
-      paymentInfo,
-      user: _id,
-    });
-    res.json({
-      order,
-      success: true,
-    });
-  } catch (error) {
-    throw new Error(error);
+    totalPrice: totals.subtotal,
+    totalPriceAfterDiscount: totals.total,
+    shippingCharge: totals.shipping,
+    coupon: totals.coupon || undefined,
+    paymentInfo: isCod
+      ? { method: "COD" }
+      : {
+          method: "RAZORPAY",
+          razorpayOrderId: paymentInfo.razorpayOrderId,
+          razorpayPaymentId: paymentInfo.razorpayPaymentId,
+        },
+    statusHistory: [{ status: "Ordered" }],
+    user: _id,
+  });
+
+  await deductStock(orderItems);
+  await Cart.deleteMany({ userId: _id });
+
+  res.json({
+    order,
+    success: true,
+  });
+});
+
+const cancelMyOrder = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  validateMongoDbId(id);
+  const order = await Order.findOne({ _id: id, user: req.user._id });
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
   }
+  if (!CANCELLABLE_STATUSES.includes(order.orderStatus)) {
+    res.status(400);
+    throw new Error(`Orders that are ${order.orderStatus} can no longer be cancelled`);
+  }
+  order.orderStatus = "Cancelled";
+  order.statusHistory.push({ status: "Cancelled" });
+  await order.save();
+  await restoreStock(order.orderItems);
+  res.json({ order });
 });
 
 const getMyOrders = asyncHandler(async (req, res) => {
   const { _id } = req.user;
   try {
     const orders = await Order.find({ user: _id })
-      .populate("user")
+      .populate("user", PUBLIC_USER_FIELDS)
       .populate("orderItems.product")
       .populate("orderItems.color");
     res.json({
@@ -528,11 +693,11 @@ const getMyOrders = asyncHandler(async (req, res) => {
 });
 
 const getAllOrders = asyncHandler(async (req, res) => {
-  const { _id } = req.user;
   try {
-    const orders = await Order.find().populate("user");
-    // .populate("orderItems.product")
-    // .populate("orderItems.color");
+    const orders = await Order.find()
+      .populate("user", PUBLIC_USER_FIELDS)
+      .populate("orderItems.product")
+      .populate("orderItems.color");
     res.json({
       orders,
     });
@@ -545,7 +710,7 @@ const getsingleOrder = asyncHandler(async (req, res) => {
   const { id } = req.params;
   try {
     const orders = await Order.findOne({ _id: id })
-      .populate("user")
+      .populate("user", PUBLIC_USER_FIELDS)
       .populate("orderItems.product")
       .populate("orderItems.color");
     res.json({
@@ -560,8 +725,14 @@ const updateOrder = asyncHandler(async (req, res) => {
   const { id } = req.params;
   try {
     const orders = await Order.findById(id);
+    const previous = orders.orderStatus;
+    if (previous === req.body.status) return res.json({ orders });
     orders.orderStatus = req.body.status;
+    orders.statusHistory.push({ status: req.body.status });
     await orders.save();
+    if (req.body.status === "Cancelled") {
+      await restoreStock(orders.orderItems);
+    }
     res.json({
       orders,
     });
@@ -677,6 +848,28 @@ const getProductByBarcode = asyncHandler(async (req, res) => {
   });
 });
 
+const searchUsers = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+
+  if (!query || query.trim() === "") {
+    return res.json([]);
+  }
+
+  const users = await User.find({
+    role: "user",
+    $or: [
+      { firstname: { $regex: query, $options: "i" } },
+      { lastname: { $regex: query, $options: "i" } },
+      { mobile: { $regex: query } }
+    ]
+  })
+    .limit(10)
+    .select("firstname lastname mobile address");
+
+  res.json(users);
+});
+
+
 
 module.exports = {
   createUser,
@@ -710,4 +903,8 @@ module.exports = {
   updateProductQuantityFromCart,
   createOfflineOrder,
   getProductByBarcode,
+  registerUser,
+  cancelMyOrder,
+  searchUsers,
+
 };
