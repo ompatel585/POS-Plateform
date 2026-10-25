@@ -1,6 +1,6 @@
 const express = require("express");
 const { authMiddleware, isAdmin } = require("../middlewares/authMiddleware");
-const { checkout, paymentVerification } = require("../controller/paymentCtrl");
+const { checkout, paymentVerification, paymentConfig } = require("../controller/paymentCtrl");
 const { getProductByBarcode } = require("../controller/userCtrl"); 
 const {
   createUser,
@@ -55,6 +55,7 @@ router.post(
 );
 // router.post("/register", createUser);
 router.post("/register", registerUser);
+router.get("/payment-config", paymentConfig);
 
 router.post("/forgot-password-token", forgotPasswordToken);
 // router.get("/barcode/:barcode", getProductByBarcode);

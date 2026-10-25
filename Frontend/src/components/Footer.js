@@ -58,7 +58,7 @@ const Footer = () => {
       <div className="footer-bottom py-3">
         <div className="container-xxl d-flex flex-wrap justify-content-between gap-2">
           <span>&copy; {new Date().getFullYear()} Cart Corner. All rights reserved.</span>
-          <span>Secure payments by Razorpay · Cash on delivery available</span>
+          <span>Cash on delivery available across India</span>
         </div>
       </div>
     </footer>

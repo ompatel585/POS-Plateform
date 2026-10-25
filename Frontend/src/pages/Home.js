@@ -6,7 +6,7 @@ import moment from "moment";
 import { toast } from "react-toastify";
 import {
   BsTruck,
-  BsShieldCheck,
+  BsCashStack,
   BsArrowRepeat,
   BsHeadset,
   BsChevronLeft,
@@ -52,7 +52,7 @@ const SLIDES = [
 
 const SERVICES = [
   { icon: <BsTruck />, title: "Free shipping", text: `On orders over ${formatPrice(FREE_SHIPPING_ABOVE)}` },
-  { icon: <BsShieldCheck />, title: "Secure payment", text: "UPI, cards & net banking" },
+  { icon: <BsCashStack />, title: "Cash on delivery", text: "Pay when your order arrives" },
   { icon: <BsArrowRepeat />, title: "Easy returns", text: "Hassle-free refunds" },
   { icon: <BsHeadset />, title: "Support", text: "We're here to help" },
 ];

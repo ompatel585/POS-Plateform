@@ -19,7 +19,11 @@ const {
   deductStock,
   restoreStock,
 } = require("../utils/orderHelpers");
-const { isValidSignature } = require("./paymentCtrl");
+const {
+  isValidSignature,
+  isOnlinePaymentEnabled,
+  ONLINE_DISABLED_MESSAGE,
+} = require("./paymentCtrl");
 
 // Never send these back to the client
 const PRIVATE_USER_FIELDS = "-password -refreshToken -passwordResetToken -passwordResetExpires";
@@ -610,6 +614,10 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   const isCod = paymentInfo.method === "COD";
+  if (!isCod && !isOnlinePaymentEnabled()) {
+    res.status(400);
+    throw new Error(ONLINE_DISABLED_MESSAGE);
+  }
   if (!isCod && !isValidSignature(paymentInfo)) {
     res.status(400);
     throw new Error("Payment could not be verified");
