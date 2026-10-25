@@ -85,7 +85,8 @@ const Checkout = () => {
   const cart = useSelector((state) => state?.auth?.cartProducts);
   const user = useSelector((state) => state?.auth?.user);
 
-  const [paymentMethod, setPaymentMethod] = useState("razorpay");
+  const [paymentMethod, setPaymentMethod] = useState("cod");
+  const [onlineEnabled, setOnlineEnabled] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [coupon, setCoupon] = useState(null); // { name, discount } as confirmed by the server
   const [applying, setApplying] = useState(false);
@@ -94,6 +95,14 @@ const Checkout = () => {
   useEffect(() => {
     dispatch(getUserCart());
   }, [dispatch]);
+
+  // Online payment only appears when the server has Razorpay keys configured
+  useEffect(() => {
+    axios
+      .get(`${base_url}user/payment-config`)
+      .then(({ data }) => setOnlineEnabled(Boolean(data?.online)))
+      .catch(() => setOnlineEnabled(false));
+  }, []);
 
   const items = useMemo(() => (cart || []).filter((i) => i?.productId), [cart]);
   const subtotal = cartSubtotal(items);
@@ -196,7 +205,7 @@ const Checkout = () => {
   const placeOrder = (values) => {
     writeJSON(ADDRESS_KEY, values);
     setPlacing(true);
-    if (paymentMethod === "cod") {
+    if (paymentMethod === "cod" || !onlineEnabled) {
       finishOrder(values, { method: "COD" });
     } else {
       payOnline(values);
@@ -269,6 +278,7 @@ const Checkout = () => {
               <section className="surface-card">
                 <h5 className="mb-3">Payment method</h5>
                 <div className="d-flex gap-3 flex-wrap">
+                  {onlineEnabled && (
                   <label className={`pay-option ${paymentMethod === "razorpay" ? "selected" : ""}`}>
                     <input
                       type="radio"
@@ -281,6 +291,7 @@ const Checkout = () => {
                       <small>UPI, cards, net banking via Razorpay</small>
                     </span>
                   </label>
+                  )}
                   <label className={`pay-option ${paymentMethod === "cod" ? "selected" : ""}`}>
                     <input
                       type="radio"
@@ -367,7 +378,7 @@ const Checkout = () => {
 
               <button type="submit" className="button button-accent button-block mt-3" disabled={placing || cart === undefined}>
                 <BsLock />{" "}
-                {placing ? "Processing…" : paymentMethod === "cod" ? "Place order" : `Pay ${formatPrice(total)}`}
+                {placing ? "Processing…" : paymentMethod === "cod" || !onlineEnabled ? "Place order" : `Pay ${formatPrice(total)}`}
               </button>
               <p className="small text-muted text-center mt-2 mb-0">
                 By placing your order you agree to our <Link to="/term-conditions">terms</Link>.
